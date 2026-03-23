@@ -1,0 +1,69 @@
+import express, { Express, Request, Response } from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+
+import authRoutes from './routes/authRoutes';
+import postRoutes from './routes/postRoutes';
+import transactionRoutes from './routes/transactionRoutes';
+
+// Load biến môi trường từ file .env
+dotenv.config();
+
+const app: Express = express();
+const httpServer = createServer(app);
+
+// Khởi tạo Socket.io (Đã giải quyết xong CORS cho web admin và mobile)
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*', // Có thể chỉnh lại URL của Web Admin khi deploy thật
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  },
+});
+
+const PORT = process.env.PORT || 5000;
+const MONGODB_URI = process.env.MONGODB_URI as string;
+
+// Middlewares cơ bản
+app.use(cors());
+app.use(express.json()); // Thay thế cho body-parser
+app.use(express.urlencoded({ extended: true }));
+
+// Test Route cơ bản
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    message: 'Chào mừng đến với API FoodShare Backend (Express + TypeScript)!',
+  });
+});
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/posts', postRoutes);
+app.use('/api/transactions', transactionRoutes);
+
+// Kết nối MongoDB và Khởi động Server
+mongoose
+  .connect(MONGODB_URI)
+  .then(() => {
+    console.log('✅ Đã kết nối MongoDB thành công!');
+
+    // Chỉ khởi động server khi đã kết nối DB xong
+    httpServer.listen(PORT, () => {
+      console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error('❌ Lỗi kết nối MongoDB:', error);
+    process.exit(1);
+  });
+
+// Lắng nghe các kết nối Socket.io (Chat Realtime sau này viết ở đây)
+io.on('connection', (socket) => {
+  console.log(`🔌 Một người dùng vừa kết nối Socket: ${socket.id}`);
+
+  socket.on('disconnect', () => {
+    console.log(`❌ Người dùng ${socket.id} đã ngắt kết nối`);
+  });
+});

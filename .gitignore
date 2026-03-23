@@ -1,0 +1,38 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies (Thư viện)
+node_modules/
+.pnp
+.pnp.js
+
+# Build Output (Kết quả biên dịch của TypeScript)
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables (Biến môi trường - Cực kỳ quan trọng để bảo mật)
+.env
+.env.test
+.env.production
+.env.local
+
+# Editor / IDE (Cấu hình của trình soạn thảo code)
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+
+# OS generated files (File rác do hệ điều hành tự sinh ra)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
