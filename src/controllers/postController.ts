@@ -1,5 +1,114 @@
 import { Request, Response } from 'express';
 import Post from '@/models/Post';
+import PostCreationPasscode from '@/models/PostCreationPasscode';
+import User from '@/models/User';
+import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
+
+const POST_PASSCODE_LENGTH = 6;
+const POST_PASSCODE_EXPIRE_MINUTES = 10;
+const MAX_PASSCODE_SEND_PER_MINUTE = 3;
+
+function generateNumericPasscode(length: number): string {
+  let passcode = '';
+
+  for (let i = 0; i < length; i += 1) {
+    passcode += Math.floor(Math.random() * 10).toString();
+  }
+
+  return passcode;
+}
+
+export const sendCreatePostPasscode = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const ownerId = req.user?.id;
+
+    if (!ownerId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const user = await User.findById(ownerId).select('email');
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy người dùng',
+      });
+      return;
+    }
+
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const recentPasscodeCount = await PostCreationPasscode.countDocuments({
+      userId: ownerId,
+      createdAt: { $gte: oneMinuteAgo },
+    });
+
+    if (recentPasscodeCount >= MAX_PASSCODE_SEND_PER_MINUTE) {
+      res.status(429).json({
+        success: false,
+        message:
+          'Bạn đã gửi passcode quá nhiều lần. Vui lòng thử lại sau khoảng 1 phút',
+      });
+      return;
+    }
+
+    const passcode = generateNumericPasscode(POST_PASSCODE_LENGTH);
+    const expiresAt = new Date(
+      Date.now() + POST_PASSCODE_EXPIRE_MINUTES * 60 * 1000
+    );
+
+    // Vô hiệu các passcode cũ chưa dùng để chỉ giữ 1 mã hợp lệ gần nhất.
+    await PostCreationPasscode.updateMany(
+      {
+        userId: ownerId,
+        usedAt: null,
+      },
+      {
+        $set: { usedAt: new Date() },
+      }
+    );
+
+    const passcodeDoc = await PostCreationPasscode.create({
+      userId: ownerId,
+      code: passcode,
+      expiresAt,
+    });
+
+    try {
+      await sendPostPasscodeEmail({
+        email: user.email,
+        passcode,
+        expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
+      });
+    } catch (emailError) {
+      await PostCreationPasscode.findByIdAndDelete(passcodeDoc._id);
+      throw emailError;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã gửi passcode xác thực tạo bài đăng qua email',
+      data: {
+        expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
+      },
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Không thể gửi passcode';
+
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: errorMessage,
+    });
+  }
+};
 
 // --- PST_F02: TẠO BÀI ĐĂNG (Create Post) ---
 export const createPost = async (
@@ -20,7 +129,16 @@ export const createPost = async (
       pickupTime,
       location,
       publishAt,
+      passcode,
     } = req.body;
+
+    if (!ownerId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
 
     // 1. Validate cơ bản
     if (
@@ -35,6 +153,33 @@ export const createPost = async (
       res.status(400).json({
         success: false,
         message: 'Vui lòng điền đầy đủ các trường bắt buộc',
+      });
+      return;
+    }
+
+    if (
+      typeof passcode !== 'string' ||
+      !new RegExp(`^\\d{${POST_PASSCODE_LENGTH}}$`).test(passcode)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: `Passcode phải gồm đúng ${POST_PASSCODE_LENGTH} chữ số`,
+      });
+      return;
+    }
+
+    const now = new Date();
+    const passcodeRecord = await PostCreationPasscode.findOne({
+      userId: ownerId,
+      code: passcode,
+      usedAt: null,
+      expiresAt: { $gt: now },
+    }).sort({ createdAt: -1 });
+
+    if (!passcodeRecord) {
+      res.status(400).json({
+        success: false,
+        message: 'Passcode không hợp lệ hoặc đã hết hạn',
       });
       return;
     }
@@ -56,16 +201,20 @@ export const createPost = async (
       publishAt,
     });
 
+    passcodeRecord.usedAt = now;
+    await passcodeRecord.save();
+
     res.status(201).json({
       success: true,
       message: 'Tạo bài đăng thành công',
       data: newPost,
     });
-  } catch (error: any) {
-    console.error('Lỗi Tạo bài đăng:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
