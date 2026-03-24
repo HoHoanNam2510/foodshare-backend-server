@@ -3,8 +3,11 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 // Định nghĩa Interface cho TypeScript
 export interface IUser extends Document {
   email: string;
+  googleId?: string;
   phoneNumber?: string;
   password?: string;
+  authProvider: 'LOCAL' | 'GOOGLE';
+  isProfileCompleted: boolean;
   role: 'USER' | 'STORE' | 'ADMIN';
   fullName: string;
   avatar?: string;
@@ -36,8 +39,19 @@ const UserSchema = new Schema<IUser>(
       lowercase: true,
       trim: true,
     },
+    googleId: { type: String, unique: true, sparse: true, trim: true },
     phoneNumber: { type: String, sparse: true }, // sparse cho phép null nhưng vẫn đánh index nếu có giá trị
-    password: { type: String, required: true, select: false }, // select: false để mặc định không hiện password khi query
+    password: { type: String, select: false }, // Local account có password, Google account có thể không có
+    authProvider: {
+      type: String,
+      enum: ['LOCAL', 'GOOGLE'],
+      default: 'LOCAL',
+    },
+    isProfileCompleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     role: {
       type: String,
       enum: ['USER', 'STORE', 'ADMIN'],
