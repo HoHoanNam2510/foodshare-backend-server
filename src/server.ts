@@ -8,6 +8,7 @@ import { Server } from 'socket.io';
 import authRoutes from './routes/authRoutes';
 import postRoutes from './routes/postRoutes';
 import transactionRoutes from './routes/transactionRoutes';
+import userRoutes from './routes/userRoutes';
 
 // Load biến môi trường từ file .env
 dotenv.config();
@@ -42,6 +43,7 @@ app.get('/', (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/users', userRoutes);
 
 // Kết nối MongoDB và Khởi động Server
 mongoose

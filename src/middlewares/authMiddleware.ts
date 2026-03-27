@@ -53,3 +53,27 @@ export const verifyAuth = (
     return;
   }
 };
+
+export const verifyAdmin = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+    });
+    return;
+  }
+
+  if (req.user.role !== 'ADMIN') {
+    res.status(403).json({
+      success: false,
+      message: 'Bạn không có quyền truy cập tài nguyên này',
+    });
+    return;
+  }
+
+  next();
+};
