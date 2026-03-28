@@ -1,12 +1,17 @@
 import { Request, Response } from 'express';
-import Post from '@/models/Post';
+import mongoose from 'mongoose';
+import Post, { IPost } from '@/models/Post';
 import PostCreationPasscode from '@/models/PostCreationPasscode';
 import User from '@/models/User';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
+import { runAIModerationJob, getAdminPostList } from '@/services/postService';
 
 const POST_PASSCODE_LENGTH = 6;
 const POST_PASSCODE_EXPIRE_MINUTES = 10;
 const MAX_PASSCODE_SEND_PER_MINUTE = 3;
+
+// Trường nhạy cảm — nếu user sửa thì phải gửi lại cho AI duyệt
+const SENSITIVE_FIELDS = ['title', 'description', 'images'];
 
 function generateNumericPasscode(length: number): string {
   let passcode = '';
@@ -18,6 +23,11 @@ function generateNumericPasscode(length: number): string {
   return passcode;
 }
 
+// =============================================
+// I. NHÓM HANDLER DÀNH CHO USER / STORE
+// =============================================
+
+// --- Gửi mã OTP xác thực tạo bài ---
 export const sendCreatePostPasscode = async (
   req: Request,
   res: Response
@@ -116,7 +126,7 @@ export const createPost = async (
   res: Response
 ): Promise<void> => {
   try {
-    const ownerId = req.user?.id; // Lấy từ authMiddleware
+    const ownerId = req.user?.id;
     const {
       type,
       category,
@@ -184,7 +194,7 @@ export const createPost = async (
       return;
     }
 
-    // 2. Tạo bài đăng mới
+    // 2. Tạo bài đăng mới — status mặc định là PENDING_REVIEW
     const newPost = await Post.create({
       ownerId,
       type,
@@ -193,21 +203,29 @@ export const createPost = async (
       description,
       images,
       totalQuantity,
-      remainingQuantity: totalQuantity, // Lúc mới tạo thì còn nguyên
-      price: price || 0,
+      remainingQuantity: totalQuantity,
+      price: type === 'P2P_FREE' ? 0 : price || 0,
       expiryDate,
       pickupTime,
-      location, // Phải có dạng { type: 'Point', coordinates: [lng, lat] }
+      location,
+      status: 'PENDING_REVIEW',
       publishAt,
     });
 
+    // 3. Đánh dấu passcode đã sử dụng
     passcodeRecord.usedAt = now;
     await passcodeRecord.save();
 
+    // 4. Trả về ngay cho Frontend — không chờ AI
     res.status(201).json({
       success: true,
       message: 'Tạo bài đăng thành công',
       data: newPost,
+    });
+
+    // 5. Background Job — AI Moderation (không chặn response)
+    runAIModerationJob(String(newPost._id)).catch((err) => {
+      console.error('Background AI moderation failed:', err);
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
@@ -226,7 +244,6 @@ export const getMyPosts = async (
   try {
     const ownerId = req.user?.id;
 
-    // Lấy bài đăng của user hiện tại, sắp xếp mới nhất lên đầu
     const posts = await Post.find({ ownerId }).sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -234,11 +251,11 @@ export const getMyPosts = async (
       message: 'Lấy danh sách bài đăng thành công',
       data: posts,
     });
-  } catch (error: any) {
-    console.error('Lỗi Lấy bài đăng:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
@@ -250,9 +267,10 @@ export const updatePost = async (
   try {
     const postId = req.params.id;
     const ownerId = req.user?.id;
+
+    // req.body đã được validateBody(updatePostSchema) lọc và validate trước đó
     const updates = req.body;
 
-    // Tìm bài đăng để đảm bảo nó thuộc về user này
     const post = await Post.findOne({ _id: postId, ownerId });
     if (!post) {
       res.status(404).json({
@@ -262,11 +280,19 @@ export const updatePost = async (
       return;
     }
 
-    // Cập nhật các trường được phép
+    // Kiểm tra xem có sửa trường nhạy cảm không → cần duyệt lại
+    const hasSensitiveChange = SENSITIVE_FIELDS.some(
+      (field) => field in updates
+    );
+
+    if (hasSensitiveChange) {
+      updates.status = 'PENDING_REVIEW';
+    }
+
     const updatedPost = await Post.findByIdAndUpdate(
       postId,
       { $set: updates },
-      { new: true, runValidators: true } // new: true để trả về data sau khi update, runValidators để check logic Mongoose
+      { new: true, runValidators: true }
     );
 
     res.status(200).json({
@@ -274,11 +300,18 @@ export const updatePost = async (
       message: 'Cập nhật bài đăng thành công',
       data: updatedPost,
     });
-  } catch (error: any) {
-    console.error('Lỗi Sửa bài đăng:', error);
+
+    // Nếu sửa trường nhạy cảm, kích hoạt lại AI moderation
+    if (hasSensitiveChange && updatedPost) {
+      runAIModerationJob(String(updatedPost._id)).catch((err) => {
+        console.error('Background AI re-moderation failed:', err);
+      });
+    }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
@@ -305,21 +338,83 @@ export const deletePost = async (
       success: true,
       message: 'Xóa bài đăng thành công',
     });
-  } catch (error: any) {
-    console.error('Lỗi Xóa bài đăng:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
-// --- PST_F05 (Bonus): TÌM BÀI ĐĂNG QUANH ĐÂY (Get Nearby Posts) ---
-export const getNearbyPosts = async (
+// =============================================
+// II. NHÓM HANDLER PUBLIC / TÌM KIẾM BẢN ĐỒ
+// =============================================
+
+// --- Xem chi tiết 1 bài đăng (getPostDetail) ---
+export const getPostDetail = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const { lng, lat, distance = 5000 } = req.query; // Mặc định tìm trong bán kính 5km
+    const postId = String(req.params.id);
+
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      res.status(400).json({
+        success: false,
+        message: 'ID bài đăng không hợp lệ',
+      });
+      return;
+    }
+
+    const post = await Post.findById(postId).populate(
+      'ownerId',
+      'fullName avatar averageRating role'
+    );
+
+    if (!post) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy bài đăng',
+      });
+      return;
+    }
+
+    // Chặn xem nếu bài đăng ở trạng thái không công khai
+    // Trừ khi người gọi API chính là ownerId
+    const restrictedStatuses = ['HIDDEN', 'REJECTED', 'PENDING_REVIEW'];
+    const currentUserId = req.user?.id;
+    const isOwner =
+      currentUserId &&
+      String(post.ownerId._id || post.ownerId) === currentUserId;
+
+    if (restrictedStatuses.includes(post.status) && !isOwner) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy bài đăng',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy chi tiết bài đăng thành công',
+      data: post,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// --- PST_F05, MAP_F01-F03: TÌM BÀI ĐĂNG TRÊN BẢN ĐỒ (searchMapPosts) ---
+export const searchMapPosts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { lng, lat, distance = '5000', type, sort } = req.query;
 
     if (!lng || !lat) {
       res.status(400).json({
@@ -329,8 +424,8 @@ export const getNearbyPosts = async (
       return;
     }
 
-    // Sử dụng index 2dsphere đã thiết lập trong Post.ts
-    const posts = await Post.find({
+    // Chỉ hiển thị bài đăng AVAILABLE trên bản đồ
+    const filter: Record<string, unknown> = {
       status: 'AVAILABLE',
       location: {
         $near: {
@@ -338,20 +433,157 @@ export const getNearbyPosts = async (
             type: 'Point',
             coordinates: [parseFloat(lng as string), parseFloat(lat as string)],
           },
-          $maxDistance: parseInt(distance as string), // Tính bằng mét
+          $maxDistance: parseInt(distance as string, 10),
         },
       },
-    }).populate('ownerId', 'fullName avatar averageRating'); // Kéo thêm thông tin người đăng
+    };
+
+    // Lọc theo loại bài đăng nếu có (P2P_FREE / B2C_MYSTERY_BAG)
+    if (type && typeof type === 'string') {
+      filter.type = type;
+    }
+
+    // Xác định thứ tự sắp xếp
+    let sortOption: Record<string, 1 | -1> = {};
+    if (sort === 'newest') {
+      sortOption = { createdAt: -1 };
+    } else if (sort === 'expiring') {
+      sortOption = { expiryDate: 1 };
+    }
+
+    const posts = await Post.find(filter)
+      .populate('ownerId', 'fullName avatar averageRating role')
+      .sort(sortOption);
 
     res.status(200).json({
       success: true,
       message: 'Lấy bài đăng xung quanh thành công',
       data: posts,
     });
-  } catch (error: any) {
-    console.error('Lỗi Tìm bài đăng xung quanh:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// =============================================
+// III. NHÓM HANDLER DÀNH CHO ADMIN
+// =============================================
+
+// --- ADM_P01: Lấy danh sách bài đăng (Admin) ---
+export const adminGetPosts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { status, page, limit, sortBy, sortOrder } = req.query;
+
+    const result = await getAdminPostList({
+      status: status as IPost['status'] | undefined,
+      page: page ? parseInt(page as string, 10) : undefined,
+      limit: limit ? parseInt(limit as string, 10) : undefined,
+      sortBy: sortBy as 'createdAt' | 'updatedAt' | undefined,
+      sortOrder: sortOrder as 'asc' | 'desc' | undefined,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách bài đăng thành công',
+      data: result.posts,
+      pagination: result.pagination,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// --- ADM_P02: Admin sửa bài đăng (bao gồm thay đổi status) ---
+export const adminUpdatePost = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const postId = String(req.params.id);
+    const updates = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      res.status(400).json({
+        success: false,
+        message: 'ID bài đăng không hợp lệ',
+      });
+      return;
+    }
+
+    const updatedPost = await Post.findByIdAndUpdate(
+      postId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedPost) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy bài đăng',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Admin cập nhật bài đăng thành công',
+      data: updatedPost,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// --- ADM_P03: Admin ẩn bài đăng vi phạm ---
+export const adminToggleHidePost = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const postId = String(req.params.id);
+
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      res.status(400).json({
+        success: false,
+        message: 'ID bài đăng không hợp lệ',
+      });
+      return;
+    }
+
+    const post = await Post.findById(postId);
+
+    if (!post) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy bài đăng',
+      });
+      return;
+    }
+
+    post.status = 'HIDDEN';
+    await post.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã khóa bài viết thành công',
+      data: post,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };

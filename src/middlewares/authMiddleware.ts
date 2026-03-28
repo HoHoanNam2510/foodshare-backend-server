@@ -77,3 +77,27 @@ export const verifyAdmin = (
 
   next();
 };
+
+/**
+ * Middleware tùy chọn: Nếu có Bearer token hợp lệ thì gắn req.user,
+ * nếu không có hoặc token lỗi thì vẫn cho đi tiếp (không chặn).
+ * Dùng cho các route public nhưng cần biết ai đang gọi (VD: getPostDetail kiểm tra owner).
+ */
+export const optionalAuth = (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): void => {
+  const authHeader = req.headers.authorization;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      req.user = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    } catch {
+      // Token không hợp lệ → bỏ qua, không gắn user
+    }
+  }
+
+  next();
+};

@@ -20,7 +20,13 @@ export interface IPost extends Document {
     type: 'Point';
     coordinates: [number, number]; // [longitude, latitude]
   };
-  status: 'AVAILABLE' | 'BOOKED' | 'OUT_OF_STOCK' | 'HIDDEN';
+  status:
+    | 'PENDING_REVIEW'
+    | 'AVAILABLE'
+    | 'BOOKED'
+    | 'OUT_OF_STOCK'
+    | 'HIDDEN'
+    | 'REJECTED';
   publishAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -84,8 +90,15 @@ const PostSchema = new Schema<IPost>(
 
     status: {
       type: String,
-      enum: ['AVAILABLE', 'BOOKED', 'OUT_OF_STOCK', 'HIDDEN'],
-      default: 'AVAILABLE',
+      enum: [
+        'PENDING_REVIEW',
+        'AVAILABLE',
+        'BOOKED',
+        'OUT_OF_STOCK',
+        'HIDDEN',
+        'REJECTED',
+      ],
+      default: 'PENDING_REVIEW', // Đổi mặc định thành chờ duyệt thay vì available
     },
 
     publishAt: { type: Date }, // Optional: Dùng cho tính năng hẹn giờ đăng bài B2C
