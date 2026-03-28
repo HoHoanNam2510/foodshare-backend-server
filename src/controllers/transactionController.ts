@@ -56,10 +56,12 @@ export const createRequest = async (
       message: 'Tạo yêu cầu xin đồ thành công',
       data: newTransaction,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: message });
   }
 };
 
@@ -105,15 +107,17 @@ export const updateOrDeleteRequest = async (
     }
 
     res.status(400).json({ success: false, message: 'Hành động không hợp lệ' });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: message });
   }
 };
 
-// --- TRX_F04: XEM DANH SÁCH YÊU CẦU CỦA 1 BÀI ĐĂNG ---
-export const getPostRequests = async (
+// --- TRX_F04: XEM DANH SÁCH GIAO DỊCH CỦA 1 BÀI ĐĂNG (P2P/B2C) ---
+export const getPostTransactions = async (
   req: Request,
   res: Response
 ): Promise<void> => {
@@ -131,19 +135,26 @@ export const getPostRequests = async (
       return;
     }
 
-    const requests = await Transaction.find({ postId, type: 'REQUEST' })
+    // P2P: Lọc các đơn đang PENDING chờ duyệt
+    // B2C: Lọc các đơn đã ESCROWED (thanh toán xong, chờ giao)
+    const statusFilter =
+      post.type === 'P2P_FREE' ? { status: 'PENDING' } : { status: 'ESCROWED' };
+
+    const transactions = await Transaction.find({ postId, ...statusFilter })
       .populate('requesterId', 'fullName avatar averageRating')
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, data: requests });
-  } catch (error: any) {
+    res.status(200).json({ success: true, data: transactions });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: message });
   }
 };
 
-// --- TRX_F05 & TRX_F06: XÁC NHẬN/TỪ CHỐI CHO ĐỒ & CẬP NHẬT POST ---
+// --- TRX_F05, TRX_F06, TRX_F11: XÁC NHẬN/TỪ CHỐI CHO ĐỒ & CẬP NHẬT POST & SINH QR (CHỈ P2P) ---
 export const respondToRequest = async (
   req: Request,
   res: Response
@@ -156,6 +167,7 @@ export const respondToRequest = async (
     const transaction = await Transaction.findOne({
       _id: transactionId,
       ownerId,
+      type: 'REQUEST',
       status: 'PENDING',
     });
     if (!transaction) {
@@ -185,6 +197,11 @@ export const respondToRequest = async (
 
       // Cập nhật trạng thái Transaction sang ACCEPTED
       transaction.status = 'ACCEPTED';
+
+      // Sinh QR cho P2P (TRX_F11) — người xin mang ra nhận đồ và quét
+      const rawQrString = `${transaction._id}-${transaction.requesterId}-${crypto.randomBytes(4).toString('hex')}`;
+      transaction.qrCode = rawQrString;
+
       await transaction.save();
 
       // Cập nhật Post (TRX_F06)
@@ -192,21 +209,25 @@ export const respondToRequest = async (
       if (post.remainingQuantity === 0) {
         post.status = 'OUT_OF_STOCK';
       } else {
-        post.status = 'BOOKED'; // Chuyển từ Available sang Booked
+        post.status = 'BOOKED';
       }
       await post.save();
 
-      res
-        .status(200)
-        .json({ success: true, message: 'Đã chấp nhận yêu cầu xin đồ' });
+      res.status(200).json({
+        success: true,
+        message: 'Đã chấp nhận yêu cầu xin đồ',
+        data: { qrCode: rawQrString },
+      });
       return;
     }
 
     res.status(400).json({ success: false, message: 'Phản hồi không hợp lệ' });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: message });
   }
 };
 
@@ -271,10 +292,12 @@ export const createOrder = async (
       message: 'Đặt hàng thành công. Vui lòng thanh toán trong 10 phút.',
       data: newOrder,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: message });
   }
 };
 
@@ -341,10 +364,12 @@ export const processPayment = async (
       message: 'Thanh toán thành công. Tiền đã được tạm giữ.',
       qrCode: rawQrString,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: message });
   }
 };
 
@@ -390,9 +415,188 @@ export const scanQrAndComplete = async (
         'Xác nhận giao nhận thành công! Tiền đã được giải ngân về ví của bạn.',
       data: transaction,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: error.message });
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- XEM LỊCH SỬ GIAO DỊCH CỦA TÔI ---
+export const getMyTransactions = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const requesterId = req.user?.id;
+
+    const transactions = await Transaction.find({ requesterId })
+      .populate('postId', 'title images type price')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, data: transactions });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- HỦY ĐƠN TÚI MÙ BỞI STORE (B2C) ---
+export const cancelOrderByStore = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const transactionId = req.params.id;
+    const ownerId = req.user?.id;
+
+    // Tìm đơn ORDER đang ESCROWED thuộc quyền sở hữu của Store
+    const transaction = await Transaction.findOne({
+      _id: transactionId,
+      ownerId,
+      type: 'ORDER',
+      status: 'ESCROWED',
+    });
+
+    if (!transaction) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đơn hàng hoặc đơn không ở trạng thái chờ giao',
+      });
+      return;
+    }
+
+    // Hủy đơn
+    transaction.status = 'CANCELLED';
+    await transaction.save();
+
+    // Khôi phục tồn kho cho Post
+    const post = await Post.findById(transaction.postId);
+    if (post) {
+      post.remainingQuantity += transaction.quantity;
+      if (post.status === 'OUT_OF_STOCK') {
+        post.status = 'AVAILABLE';
+      }
+      await post.save();
+    }
+
+    // TODO: Kích hoạt tiến trình Refund (hoàn tiền từ Escrow về ví người mua)
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã hủy đơn và hoàn tiền cho khách',
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- ADM_T01: ADMIN XEM TOÀN BỘ GIAO DỊCH ---
+export const adminGetTransactions = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { type, status, page = '1', limit = '20' } = req.query;
+
+    const filter: Record<string, string> = {};
+    if (typeof type === 'string' && type) filter.type = type;
+    if (typeof status === 'string' && status) filter.status = status;
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(
+      100,
+      Math.max(1, parseInt(limit as string, 10) || 20)
+    );
+    const skip = (pageNum - 1) * limitNum;
+
+    const [transactions, total] = await Promise.all([
+      Transaction.find(filter)
+        .populate('requesterId', 'fullName email avatar')
+        .populate('ownerId', 'fullName email avatar')
+        .populate('postId', 'title type price')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      Transaction.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: transactions,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- ADM_T02: ADMIN ÉP ĐỔI TRẠNG THÁI GIAO DỊCH ---
+export const adminForceUpdateStatus = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const transactionId = req.params.id;
+    const { status } = req.body;
+
+    const validStatuses = [
+      'PENDING',
+      'ACCEPTED',
+      'REJECTED',
+      'ESCROWED',
+      'COMPLETED',
+      'CANCELLED',
+    ];
+
+    if (!validStatuses.includes(status)) {
+      res.status(400).json({
+        success: false,
+        message: `Trạng thái không hợp lệ. Giá trị cho phép: ${validStatuses.join(', ')}`,
+      });
+      return;
+    }
+
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy giao dịch',
+      });
+      return;
+    }
+
+    transaction.status = status;
+    await transaction.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Đã ép đổi trạng thái giao dịch thành ${status}`,
+      data: transaction,
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
   }
 };
