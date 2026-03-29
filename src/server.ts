@@ -9,6 +9,7 @@ import authRoutes from './routes/authRoutes';
 import postRoutes from './routes/postRoutes';
 import transactionRoutes from './routes/transactionRoutes';
 import userRoutes from './routes/userRoutes';
+import reportRoutes from './routes/reportRoutes';
 
 // Load biến môi trường từ file .env
 dotenv.config();
@@ -44,6 +45,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Kết nối MongoDB và Khởi động Server
 mongoose
