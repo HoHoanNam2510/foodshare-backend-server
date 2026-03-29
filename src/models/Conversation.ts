@@ -1,10 +1,14 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export type ConversationStatus = 'ACTIVE' | 'LOCKED';
+
 export interface IConversation extends Document {
-  transactionId?: mongoose.Types.ObjectId; // Thêm dấu ? để biến thành tùy chọn (optional)
+  transactionId?: mongoose.Types.ObjectId;
   participants: mongoose.Types.ObjectId[];
-  lastMessage?: string;
+  lastMessage?: mongoose.Types.ObjectId;
   lastMessageAt?: Date;
+  unreadCount: Map<string, number>;
+  status: ConversationStatus;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -14,24 +18,35 @@ const ConversationSchema = new Schema<IConversation>(
     transactionId: {
       type: Schema.Types.ObjectId,
       ref: 'Transaction',
-      // Đã xóa dòng required: true ở đây
     },
     // Lưu mảng ID của 2 người chat với nhau
     participants: [
       { type: Schema.Types.ObjectId, ref: 'User', required: true },
     ],
-    // Cache lại tin nhắn cuối cùng để hiển thị ở danh sách ngoài màn hình Chat
-    lastMessage: { type: String, default: '' },
+    // Ref đến Message cuối cùng để populate hiển thị ở danh sách chat
+    lastMessage: { type: Schema.Types.ObjectId, ref: 'Message', default: null },
     lastMessageAt: { type: Date, default: Date.now },
+    // Lưu số tin nhắn chưa đọc cho từng participant (key = UserId string)
+    unreadCount: {
+      type: Map,
+      of: Number,
+      default: {},
+    },
+    // Hỗ trợ tính năng Khóa Chat của Admin (ADM_C02)
+    status: {
+      type: String,
+      enum: ['ACTIVE', 'LOCKED'],
+      default: 'ACTIVE',
+    },
   },
   { timestamps: true }
 );
 
 // Đánh Index để tối ưu:
-// 1. Khi user mở tab Tin nhắn -> Lấy danh sách các cuộc hội thoại của user đó, sắp xếp theo thời gian tin nhắn mới nhất
-ConversationSchema.index({ participants: 1, lastMessageAt: -1 });
+// 1. Khi user mở tab Tin nhắn -> Lấy danh sách các cuộc hội thoại của user đó, sắp xếp theo thời gian mới nhất
+ConversationSchema.index({ participants: 1, updatedAt: -1 });
 
-// 2. Tìm nhanh phòng chat dựa vào transactionId (Vẫn giữ index này vì thao tác tìm phòng chat theo đơn hàng diễn ra rất thường xuyên)
+// 2. Tìm nhanh phòng chat dựa vào transactionId
 ConversationSchema.index({ transactionId: 1 });
 
 const Conversation: Model<IConversation> =
