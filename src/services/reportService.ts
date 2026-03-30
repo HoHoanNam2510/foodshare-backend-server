@@ -9,7 +9,9 @@ import Report, {
 import Post from '@/models/Post';
 import User from '@/models/User';
 import Transaction from '@/models/Transaction';
+import Review from '@/models/Review';
 import { applyPenaltyPoints } from '@/services/greenPointService';
+import { recalculateAverageRating } from '@/services/reviewService';
 
 // Hằng số cho logic phạt
 const REPUTATION_PENALTY = 10;
@@ -258,6 +260,8 @@ async function verifyTargetExists(
       return !!(await User.exists({ _id: targetId }));
     case 'TRANSACTION':
       return !!(await Transaction.exists({ _id: targetId }));
+    case 'REVIEW':
+      return !!(await Review.exists({ _id: targetId }));
     default:
       return false;
   }
@@ -361,6 +365,28 @@ async function executePenalty(
       break;
     }
 
+    case 'REVIEW_DELETED': {
+      // Xóa cứng bài Review ác ý + phục hồi averageRating cho người bị đánh giá
+      if (targetType !== 'REVIEW') {
+        throw new ReportServiceError(
+          'Hành động REVIEW_DELETED chỉ áp dụng cho báo cáo loại REVIEW',
+          400
+        );
+      }
+      const reviewToDelete = await Review.findById(targetId);
+      if (!reviewToDelete) {
+        throw new ReportServiceError(
+          'Bài đánh giá mục tiêu không tồn tại',
+          404
+        );
+      }
+      const revieweeId = reviewToDelete.revieweeId.toString();
+      await reviewToDelete.deleteOne();
+      // Phục hồi averageRating cho người bị đánh giá
+      await recalculateAverageRating(revieweeId);
+      break;
+    }
+
     case 'NONE':
       // Không thực thi hình phạt
       break;
@@ -430,6 +456,12 @@ async function populateTarget(
     case 'TRANSACTION':
       result.target = await Transaction.findById(report.targetId)
         .select('postId requesterId ownerId status type quantity')
+        .lean();
+      break;
+    case 'REVIEW':
+      result.target = await Review.findById(report.targetId)
+        .populate('reviewerId', 'fullName avatar')
+        .populate('revieweeId', 'fullName avatar')
         .lean();
       break;
   }

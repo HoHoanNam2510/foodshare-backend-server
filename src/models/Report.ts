@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export type ReportTargetType = 'POST' | 'USER' | 'TRANSACTION';
+export type ReportTargetType = 'POST' | 'USER' | 'TRANSACTION' | 'REVIEW';
 export type ReportReason =
   | 'FOOD_SAFETY'
   | 'SCAM'
@@ -13,7 +13,8 @@ export type ReportAction =
   | 'POST_HIDDEN'
   | 'USER_WARNED'
   | 'USER_BANNED'
-  | 'REFUNDED';
+  | 'REFUNDED'
+  | 'REVIEW_DELETED';
 
 export interface IReport extends Document {
   reporterId: mongoose.Types.ObjectId;
@@ -40,7 +41,7 @@ const ReportSchema = new Schema<IReport>(
     },
     targetType: {
       type: String,
-      enum: ['POST', 'USER', 'TRANSACTION'],
+      enum: ['POST', 'USER', 'TRANSACTION', 'REVIEW'],
       required: true,
     },
     targetId: {
@@ -77,7 +78,14 @@ const ReportSchema = new Schema<IReport>(
     },
     actionTaken: {
       type: String,
-      enum: ['NONE', 'POST_HIDDEN', 'USER_WARNED', 'USER_BANNED', 'REFUNDED'],
+      enum: [
+        'NONE',
+        'POST_HIDDEN',
+        'USER_WARNED',
+        'USER_BANNED',
+        'REFUNDED',
+        'REVIEW_DELETED',
+      ],
       default: 'NONE',
     },
     resolutionNote: {

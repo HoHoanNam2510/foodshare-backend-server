@@ -13,6 +13,7 @@ import reportRoutes from './routes/reportRoutes';
 import chatRoutes from './routes/chatRoutes';
 import voucherRoutes from './routes/voucherRoutes';
 import greenPointRoutes from './routes/greenPointRoutes';
+import reviewRoutes from './routes/reviewRoutes';
 
 // Load biến môi trường từ file .env
 dotenv.config();
@@ -52,6 +53,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/vouchers', voucherRoutes);
 app.use('/api/greenpoints', greenPointRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Kết nối MongoDB và Khởi động Server
 mongoose

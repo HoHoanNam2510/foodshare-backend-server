@@ -5,9 +5,9 @@ import { z } from 'zod';
 // =============================================
 
 export const createReportSchema = z.object({
-  targetType: z.enum(['POST', 'USER', 'TRANSACTION'], {
+  targetType: z.enum(['POST', 'USER', 'TRANSACTION', 'REVIEW'], {
     errorMap: () => ({
-      message: 'targetType phải là POST, USER hoặc TRANSACTION',
+      message: 'targetType phải là POST, USER, TRANSACTION hoặc REVIEW',
     }),
   }),
   targetId: z.string().min(1, 'targetId là bắt buộc'),
@@ -37,12 +37,22 @@ export const adminProcessReportSchema = z.object({
     }),
   }),
   actionTaken: z
-    .enum(['NONE', 'POST_HIDDEN', 'USER_WARNED', 'USER_BANNED', 'REFUNDED'], {
-      errorMap: () => ({
-        message:
-          'actionTaken phải là NONE, POST_HIDDEN, USER_WARNED, USER_BANNED hoặc REFUNDED',
-      }),
-    })
+    .enum(
+      [
+        'NONE',
+        'POST_HIDDEN',
+        'USER_WARNED',
+        'USER_BANNED',
+        'REFUNDED',
+        'REVIEW_DELETED',
+      ],
+      {
+        errorMap: () => ({
+          message:
+            'actionTaken phải là NONE, POST_HIDDEN, USER_WARNED, USER_BANNED, REFUNDED hoặc REVIEW_DELETED',
+        }),
+      }
+    )
     .optional()
     .default('NONE'),
   resolutionNote: z.string().min(1, 'Lời nhắn phán quyết là bắt buộc'),
