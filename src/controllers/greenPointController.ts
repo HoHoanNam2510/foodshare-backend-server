@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import {
   GreenPointServiceError,
   getPointHistory as getPointHistoryService,
+  adminGetAllPointLogs as adminGetAllPointLogsService,
 } from '@/services/greenPointService';
 
 function handleGreenPointError(error: unknown, res: Response): void {
@@ -14,8 +15,7 @@ function handleGreenPointError(error: unknown, res: Response): void {
     return;
   }
 
-  const message =
-    error instanceof Error ? error.message : 'Lỗi không xác định';
+  const message = error instanceof Error ? error.message : 'Lỗi không xác định';
   console.error('❌ GreenPoint Error:', message);
   res.status(500).json({
     success: false,
@@ -56,6 +56,37 @@ export const getPointHistory = async (
         greenPoints: result.greenPoints,
         logs: result.logs,
       },
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    handleGreenPointError(error, res);
+  }
+};
+
+// =============================================
+// II. NHÓM HANDLER DÀNH CHO ADMIN
+// =============================================
+
+/**
+ * [GET] /api/greenpoints/admin/logs
+ * Admin xem toàn bộ lịch sử biến động Green Points, có thể lọc theo userId.
+ */
+export const adminGetAllPointLogs = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId, page, limit } = req.query;
+
+    const result = await adminGetAllPointLogsService({
+      userId: userId as string | undefined,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result.logs,
       pagination: result.pagination,
     });
   } catch (error) {

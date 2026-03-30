@@ -164,6 +164,64 @@ export async function applyPenaltyPoints(
   });
 }
 
+// =============================================
+// III. NHÓM SERVICE DÀNH CHO ADMIN
+// =============================================
+
+interface AdminPointLogsQuery {
+  userId?: string;
+  page?: number;
+  limit?: number;
+}
+
+interface AdminPointLogsResult {
+  logs: (IPointLog & {
+    userId: { _id: string; fullName: string; email: string };
+  })[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+/**
+ * Admin xem toàn bộ lịch sử biến động Green Points, có thể lọc theo userId.
+ */
+export async function adminGetAllPointLogs(
+  query: AdminPointLogsQuery
+): Promise<AdminPointLogsResult> {
+  const { userId, page = 1, limit = 20 } = query;
+
+  const filter: Record<string, unknown> = {};
+  if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+    filter.userId = userId;
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [logs, total] = await Promise.all([
+    PointLog.find(filter)
+      .populate('userId', 'fullName email avatar')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    PointLog.countDocuments(filter),
+  ]);
+
+  return {
+    logs: logs as unknown as AdminPointLogsResult['logs'],
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}
+
 /**
  * Internal: Trừ điểm khi user đổi voucher.
  * Gọi từ voucherService khi redeemVoucher.

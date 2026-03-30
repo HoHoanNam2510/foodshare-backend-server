@@ -15,6 +15,7 @@ import {
 } from '@/controllers/transactionController';
 import Transaction from '@/models/Transaction';
 import Post from '@/models/Post';
+import { awardTransactionPoints } from '@/services/greenPointService';
 
 jest.mock('@/models/Transaction', () => ({
   __esModule: true,
@@ -35,6 +36,11 @@ jest.mock('@/models/Post', () => ({
   },
 }));
 
+jest.mock('@/services/greenPointService', () => ({
+  __esModule: true,
+  awardTransactionPoints: jest.fn(),
+}));
+
 // =============================================
 // Helpers
 // =============================================
@@ -51,6 +57,9 @@ const mockedPost = Post as unknown as {
   findById: jest.Mock;
   findOne: jest.Mock;
 };
+
+const mockedAwardTransactionPoints =
+  awardTransactionPoints as unknown as jest.Mock;
 
 function createResponse(): Response {
   const res = {
@@ -667,14 +676,23 @@ describe('scanQrAndComplete', () => {
     const save = jest.fn().mockResolvedValue(undefined);
     mockedTransaction.findOne.mockResolvedValue({
       _id: TXN_ID,
+      type: 'REQUEST',
+      requesterId: { toString: () => REQUESTER_ID },
       ownerId: REQUESTER_ID,
       status: 'ESCROWED',
       save,
     });
+    mockedAwardTransactionPoints.mockResolvedValue(undefined);
 
     await scanQrAndComplete(req, res);
 
     expect(save).toHaveBeenCalled();
+    expect(mockedAwardTransactionPoints).toHaveBeenCalledWith(
+      TXN_ID,
+      'REQUEST',
+      REQUESTER_ID,
+      REQUESTER_ID
+    );
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
   });
 

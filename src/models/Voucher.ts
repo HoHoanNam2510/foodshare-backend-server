@@ -62,10 +62,9 @@ const VoucherSchema = new Schema<IVoucher>(
 );
 
 // Đánh Index tối ưu:
-// 1. Tìm nhanh voucher theo mã code (khi user nhập tay)
-VoucherSchema.index({ code: 1 });
+// (code đã có index qua unique: true trong schema field, không cần khai báo lại)
 
-// 2. Load danh sách voucher đang hiển thị trên "Cửa hàng quà tặng" (Sắp xếp theo ngày tạo)
+// 1. Load danh sách voucher đang hiển thị trên "Cửa hàng quà tặng" (Sắp xếp theo ngày tạo)
 VoucherSchema.index({ isActive: 1, validUntil: 1, remainingQuantity: 1 });
 
 const Voucher: Model<IVoucher> =

@@ -27,7 +27,6 @@ const postCreationPasscodeSchema = new Schema<IPostCreationPasscode>(
     expiresAt: {
       type: Date,
       required: true,
-      index: true,
     },
     usedAt: {
       type: Date,
