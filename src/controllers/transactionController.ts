@@ -1,7 +1,11 @@
 import crypto from 'crypto';
+
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
+
 import Transaction from '@/models/Transaction';
 import Post from '@/models/Post';
+import { awardTransactionPoints } from '@/services/greenPointService';
 
 // --- TRX_F01: TẠO YÊU CẦU XIN ĐỒ (P2P) ---
 export const createRequest = async (
@@ -408,6 +412,14 @@ export const scanQrAndComplete = async (
     // Hoàn tất giao dịch (TRX_F13)
     transaction.status = 'COMPLETED';
     await transaction.save();
+
+    // Cộng điểm GreenPoint cho cả 2 bên (Internal Hook)
+    await awardTransactionPoints(
+      (transaction._id as mongoose.Types.ObjectId).toString(),
+      transaction.type as 'REQUEST' | 'ORDER',
+      transaction.requesterId.toString(),
+      transaction.ownerId.toString()
+    );
 
     res.status(200).json({
       success: true,

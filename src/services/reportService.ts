@@ -9,6 +9,7 @@ import Report, {
 import Post from '@/models/Post';
 import User from '@/models/User';
 import Transaction from '@/models/Transaction';
+import { applyPenaltyPoints } from '@/services/greenPointService';
 
 // Hằng số cho logic phạt
 const REPUTATION_PENALTY = 10;
@@ -287,7 +288,7 @@ async function executePenalty(
     }
 
     case 'USER_WARNED': {
-      // Cảnh cáo + trừ điểm user
+      // Cảnh cáo + trừ điểm user + ghi PointLog
       const user = await findTargetUser(targetType, targetId.toString());
       if (!user) {
         throw new ReportServiceError(
@@ -295,17 +296,24 @@ async function executePenalty(
           404
         );
       }
-      user.greenPoints = Math.max(0, user.greenPoints - REPUTATION_PENALTY);
-      // Tự động ban nếu điểm tụt dưới mốc
-      if (user.greenPoints <= BAN_THRESHOLD) {
-        user.status = 'BANNED';
+      // Trừ điểm và ghi PointLog qua greenPointService
+      await applyPenaltyPoints(
+        (user._id as mongoose.Types.ObjectId).toString(),
+        REPUTATION_PENALTY,
+        (report._id as mongoose.Types.ObjectId).toString(),
+        'Bị cảnh cáo do vi phạm chính sách cộng đồng'
+      );
+      // Reload user để kiểm tra ngưỡng ban
+      const warnedUser = await User.findById(user._id);
+      if (warnedUser && warnedUser.greenPoints <= BAN_THRESHOLD) {
+        warnedUser.status = 'BANNED';
+        await warnedUser.save();
       }
-      await user.save();
       break;
     }
 
     case 'USER_BANNED': {
-      // Khóa tài khoản + trừ điểm
+      // Khóa tài khoản + trừ điểm + ghi PointLog
       const user = await findTargetUser(targetType, targetId.toString());
       if (!user) {
         throw new ReportServiceError(
@@ -313,9 +321,19 @@ async function executePenalty(
           404
         );
       }
-      user.greenPoints = Math.max(0, user.greenPoints - REPUTATION_PENALTY);
-      user.status = 'BANNED';
-      await user.save();
+      // Trừ điểm và ghi PointLog qua greenPointService
+      await applyPenaltyPoints(
+        (user._id as mongoose.Types.ObjectId).toString(),
+        REPUTATION_PENALTY,
+        (report._id as mongoose.Types.ObjectId).toString(),
+        'Bị khóa tài khoản do vi phạm nghiêm trọng'
+      );
+      // Khóa tài khoản
+      const bannedUser = await User.findById(user._id);
+      if (bannedUser) {
+        bannedUser.status = 'BANNED';
+        await bannedUser.save();
+      }
       break;
     }
 

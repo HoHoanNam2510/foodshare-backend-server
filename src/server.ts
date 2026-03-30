@@ -11,6 +11,8 @@ import transactionRoutes from './routes/transactionRoutes';
 import userRoutes from './routes/userRoutes';
 import reportRoutes from './routes/reportRoutes';
 import chatRoutes from './routes/chatRoutes';
+import voucherRoutes from './routes/voucherRoutes';
+import greenPointRoutes from './routes/greenPointRoutes';
 
 // Load biến môi trường từ file .env
 dotenv.config();
@@ -48,6 +50,8 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/vouchers', voucherRoutes);
+app.use('/api/greenpoints', greenPointRoutes);
 
 // Kết nối MongoDB và Khởi động Server
 mongoose
