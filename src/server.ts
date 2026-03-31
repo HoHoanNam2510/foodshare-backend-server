@@ -29,7 +29,7 @@ const io = new Server(httpServer, {
   },
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 const MONGODB_URI = process.env.MONGODB_URI as string;
 
 // Middlewares cơ bản
@@ -62,8 +62,8 @@ mongoose
     console.log('✅ Đã kết nối MongoDB thành công!');
 
     // Chỉ khởi động server khi đã kết nối DB xong
-    httpServer.listen(PORT, () => {
-      console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server đang chạy tại http://0.0.0.0:${PORT}`);
     });
   })
   .catch((error) => {
