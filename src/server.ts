@@ -1,8 +1,9 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
+import morgan from 'morgan';
 import { Server } from 'socket.io';
 
 import authRoutes from './routes/authRoutes';
@@ -14,6 +15,7 @@ import chatRoutes from './routes/chatRoutes';
 import voucherRoutes from './routes/voucherRoutes';
 import greenPointRoutes from './routes/greenPointRoutes';
 import reviewRoutes from './routes/reviewRoutes';
+import logger from './utils/logger';
 
 // Load biến môi trường từ file .env
 dotenv.config();
@@ -37,6 +39,13 @@ app.use(cors());
 app.use(express.json()); // Thay thế cho body-parser
 app.use(express.urlencoded({ extended: true }));
 
+// HTTP request logging
+app.use(
+  morgan('short', {
+    stream: { write: (message: string) => logger.info(message.trim()) },
+  })
+);
+
 // Test Route cơ bản
 app.get('/', (req: Request, res: Response) => {
   res.json({
@@ -55,27 +64,42 @@ app.use('/api/vouchers', voucherRoutes);
 app.use('/api/greenpoints', greenPointRoutes);
 app.use('/api/reviews', reviewRoutes);
 
+// Global error handler — log mọi lỗi chưa bắt
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  logger.error(`${req.method} ${req.originalUrl} — ${err.message}`, {
+    stack: err.stack,
+  });
+  const statusCode = (err as Error & { statusCode?: number }).statusCode || 500;
+  res.status(statusCode).json({
+    success: false,
+    message:
+      process.env.NODE_ENV === 'production'
+        ? 'Đã xảy ra lỗi từ phía server'
+        : err.message,
+  });
+});
+
 // Kết nối MongoDB và Khởi động Server
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
-    console.log('✅ Đã kết nối MongoDB thành công!');
+    logger.info('✅ Đã kết nối MongoDB thành công!');
 
     // Chỉ khởi động server khi đã kết nối DB xong
     httpServer.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server đang chạy tại http://0.0.0.0:${PORT}`);
+      logger.info(`🚀 Server đang chạy tại http://0.0.0.0:${PORT}`);
     });
   })
   .catch((error) => {
-    console.error('❌ Lỗi kết nối MongoDB:', error);
+    logger.error('❌ Lỗi kết nối MongoDB:', error);
     process.exit(1);
   });
 
 // Lắng nghe các kết nối Socket.io (Chat Realtime sau này viết ở đây)
 io.on('connection', (socket) => {
-  console.log(`🔌 Một người dùng vừa kết nối Socket: ${socket.id}`);
+  logger.info(`🔌 Một người dùng vừa kết nối Socket: ${socket.id}`);
 
   socket.on('disconnect', () => {
-    console.log(`❌ Người dùng ${socket.id} đã ngắt kết nối`);
+    logger.info(`❌ Người dùng ${socket.id} đã ngắt kết nối`);
   });
 });
