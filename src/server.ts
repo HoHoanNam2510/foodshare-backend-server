@@ -15,6 +15,7 @@ import chatRoutes from './routes/chatRoutes';
 import voucherRoutes from './routes/voucherRoutes';
 import greenPointRoutes from './routes/greenPointRoutes';
 import reviewRoutes from './routes/reviewRoutes';
+import uploadRoutes from './routes/uploadRoutes';
 import logger from './utils/logger';
 
 // Load biến môi trường từ file .env
@@ -63,6 +64,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/vouchers', voucherRoutes);
 app.use('/api/greenpoints', greenPointRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

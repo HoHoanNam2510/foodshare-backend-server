@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import User from '@/models/User';
 import { hashPassword, comparePassword, generateToken } from '@/utils/auth';
 import { verifyGoogleIdToken } from '@/utils/googleAuth';
+import {
+  deleteImageByUrl,
+  deleteMultipleImagesByUrl,
+} from '@/services/uploadService';
 
 function hasRequiredProfileInfo(user: {
   phoneNumber?: string;
@@ -519,6 +523,25 @@ export const updateProfile = async (
       phoneNumber: mergedPhone,
       defaultAddress: mergedAddress,
     });
+
+    // Xóa avatar cũ trên Cloudinary nếu đổi avatar mới
+    if (
+      avatar !== undefined &&
+      currentUser.avatar &&
+      avatar !== currentUser.avatar
+    ) {
+      deleteImageByUrl(currentUser.avatar).catch(() => {});
+    }
+
+    // Xóa KYC docs cũ không còn trong danh sách mới
+    if (kycDocuments !== undefined && currentUser.kycDocuments) {
+      const removedDocs = currentUser.kycDocuments.filter(
+        (oldUrl: string) => !kycDocuments.includes(oldUrl)
+      );
+      if (removedDocs.length > 0) {
+        deleteMultipleImagesByUrl(removedDocs).catch(() => {});
+      }
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,

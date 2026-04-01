@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import Post, { IPost } from '@/models/Post';
 import PostCreationPasscode from '@/models/PostCreationPasscode';
 import User from '@/models/User';
+import { deleteMultipleImagesByUrl } from '@/services/uploadService';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
 import { runAIModerationJob, getAdminPostList } from '@/services/postService';
 
@@ -280,6 +281,16 @@ export const updatePost = async (
       return;
     }
 
+    // Xóa ảnh cũ trên Cloudinary nếu images bị thay đổi
+    if (updates.images && Array.isArray(updates.images)) {
+      const removedUrls = post.images.filter(
+        (oldUrl: string) => !updates.images.includes(oldUrl)
+      );
+      if (removedUrls.length > 0) {
+        deleteMultipleImagesByUrl(removedUrls).catch(() => {});
+      }
+    }
+
     // Kiểm tra xem có sửa trường nhạy cảm không → cần duyệt lại
     const hasSensitiveChange = SENSITIVE_FIELDS.some(
       (field) => field in updates
@@ -332,6 +343,11 @@ export const deletePost = async (
         message: 'Không tìm thấy bài đăng hoặc bạn không có quyền xóa',
       });
       return;
+    }
+
+    // Xóa tất cả ảnh của bài đăng trên Cloudinary (fire-and-forget)
+    if (post.images && post.images.length > 0) {
+      deleteMultipleImagesByUrl(post.images).catch(() => {});
     }
 
     res.status(200).json({
