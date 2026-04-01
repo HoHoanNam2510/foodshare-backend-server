@@ -1,7 +1,7 @@
+import 'dotenv/config';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { createServer } from 'http';
 import morgan from 'morgan';
 import { Server } from 'socket.io';
@@ -17,9 +17,6 @@ import greenPointRoutes from './routes/greenPointRoutes';
 import reviewRoutes from './routes/reviewRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 import logger from './utils/logger';
-
-// Load biến môi trường từ file .env
-dotenv.config();
 
 const app: Express = express();
 const httpServer = createServer(app);
@@ -37,8 +34,8 @@ const MONGODB_URI = process.env.MONGODB_URI as string;
 
 // Middlewares cơ bản
 app.use(cors());
-app.use(express.json()); // Thay thế cho body-parser
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // HTTP request logging
 app.use(
@@ -91,6 +88,11 @@ mongoose
     httpServer.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server đang chạy tại http://0.0.0.0:${PORT}`);
     });
+
+    // Tăng timeout cho upload ảnh lớn (5 phút)
+    httpServer.requestTimeout = 5 * 60 * 1000;
+    httpServer.headersTimeout = 60 * 1000;
+    httpServer.keepAliveTimeout = 120 * 1000;
   })
   .catch((error) => {
     logger.error('❌ Lỗi kết nối MongoDB:', error);
