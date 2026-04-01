@@ -5,6 +5,7 @@ import {
   googleLogin,
   completeProfile,
   setPassword,
+  logout,
 } from '../controllers/authController';
 import { verifyAuth } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validateBodyMiddleware';
@@ -42,5 +43,8 @@ router.put(
   validateBody(setPasswordSchema),
   setPassword
 );
+
+// [POST] /api/auth/logout
+router.post('/logout', verifyAuth, logout);
 
 export default router;

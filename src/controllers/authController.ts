@@ -322,6 +322,29 @@ export const completeProfile = async (
   }
 };
 
+// --- API ĐĂNG XUẤT ---
+export const logout = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // JWT là stateless nên server không cần invalidate token.
+    // Client sẽ tự xoá token ở local storage.
+    // Endpoint này tồn tại để đảm bảo API contract rõ ràng
+    // và có thể mở rộng thêm logic (blacklist token, log activity...) sau này.
+    res.status(200).json({
+      success: true,
+      message: 'Đăng xuất thành công',
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Đăng xuất thất bại';
+
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: errorMessage,
+    });
+  }
+};
+
 // --- API THIẾT LẬP MẬT KHẨU CHO USER GOOGLE ---
 export const setPassword = async (
   req: Request,

@@ -19,7 +19,9 @@ export interface IUser extends Document {
   kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
   kycDocuments: string[];
   storeInfo?: {
+    // Có cần bổ sung thêm trường businessName không (Để tách riêng fullName là chủ cửa hàng)?
     openHours?: string;
+    // Thiếu trường closeHours, có thể thêm nếu cần
     description?: string;
     businessAddress?: string;
   };
