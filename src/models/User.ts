@@ -19,9 +19,9 @@ export interface IUser extends Document {
   kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
   kycDocuments: string[];
   storeInfo?: {
-    // Có cần bổ sung thêm trường businessName không (Để tách riêng fullName là chủ cửa hàng)?
+    businessName?: string;
     openHours?: string;
-    // Thiếu trường closeHours, có thể thêm nếu cần
+    closeHours?: string;
     description?: string;
     businessAddress?: string;
   };
@@ -84,7 +84,9 @@ const UserSchema = new Schema<IUser>(
     kycDocuments: [{ type: String }],
 
     storeInfo: {
+      businessName: String,
       openHours: String,
+      closeHours: String,
       description: String,
       businessAddress: String,
     },

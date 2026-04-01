@@ -6,6 +6,8 @@ import {
   completeProfile,
   setPassword,
   logout,
+  getMe,
+  updateProfile,
 } from '../controllers/authController';
 import { verifyAuth } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validateBodyMiddleware';
@@ -15,6 +17,7 @@ import {
   googleLoginSchema,
   completeProfileSchema,
   setPasswordSchema,
+  updateProfileSchema,
 } from '../validations/authValidation';
 
 const router = Router();
@@ -46,5 +49,16 @@ router.put(
 
 // [POST] /api/auth/logout
 router.post('/logout', verifyAuth, logout);
+
+// [GET] /api/auth/me
+router.get('/me', verifyAuth, getMe);
+
+// [PUT] /api/auth/update-profile
+router.put(
+  '/update-profile',
+  verifyAuth,
+  validateBody(updateProfileSchema),
+  updateProfile
+);
 
 export default router;

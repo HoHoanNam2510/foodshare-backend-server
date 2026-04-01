@@ -407,3 +407,146 @@ export const setPassword = async (
     });
   }
 };
+
+// --- API LẤY THÔNG TIN NGƯỜI DÙNG HIỆN TẠI ---
+export const getMe = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy người dùng',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy thông tin người dùng thành công',
+      data: sanitizeUserData(user),
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Lấy thông tin thất bại';
+
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: errorMessage,
+    });
+  }
+};
+
+// --- API CẬP NHẬT HỒ SƠ NGƯỜI DÙNG ---
+export const updateProfile = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const {
+      fullName,
+      phoneNumber,
+      defaultAddress,
+      avatar,
+      storeInfo,
+      kycDocuments,
+    } = req.body;
+
+    // Kiểm tra trùng số điện thoại
+    if (phoneNumber) {
+      const duplicatePhoneUser = await User.findOne({
+        phoneNumber,
+        _id: { $ne: userId },
+      });
+
+      if (duplicatePhoneUser) {
+        res.status(409).json({
+          success: false,
+          message: 'Số điện thoại đã được sử dụng',
+        });
+        return;
+      }
+    }
+
+    const updateData: Record<string, unknown> = {};
+
+    if (fullName !== undefined) updateData.fullName = fullName;
+    if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
+    if (defaultAddress !== undefined)
+      updateData.defaultAddress = defaultAddress;
+    if (avatar !== undefined) updateData.avatar = avatar;
+    if (kycDocuments !== undefined) updateData.kycDocuments = kycDocuments;
+    if (storeInfo !== undefined) updateData.storeInfo = storeInfo;
+
+    // Tính toán lại isProfileCompleted
+    const currentUser = await User.findById(userId);
+    if (!currentUser) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy người dùng',
+      });
+      return;
+    }
+
+    const mergedPhone =
+      phoneNumber !== undefined ? phoneNumber : currentUser.phoneNumber;
+    const mergedAddress =
+      defaultAddress !== undefined
+        ? defaultAddress
+        : currentUser.defaultAddress;
+    updateData.isProfileCompleted = hasRequiredProfileInfo({
+      phoneNumber: mergedPhone,
+      defaultAddress: mergedAddress,
+    });
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true }
+    );
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy người dùng',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật hồ sơ thành công',
+      data: sanitizeUserData(user),
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Cập nhật hồ sơ thất bại';
+
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: errorMessage,
+    });
+  }
+};
