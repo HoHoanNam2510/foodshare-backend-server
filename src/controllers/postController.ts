@@ -5,6 +5,7 @@ import PostCreationPasscode from '@/models/PostCreationPasscode';
 import User from '@/models/User';
 import { deleteMultipleImagesByUrl } from '@/services/uploadService';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
+import { sendPostPasscodeSms } from '@/utils/smsService';
 import { runAIModerationJob, getAdminPostList } from '@/services/postService';
 
 const POST_PASSCODE_LENGTH = 6;
@@ -44,12 +45,25 @@ export const sendCreatePostPasscode = async (
       return;
     }
 
-    const user = await User.findById(ownerId).select('email');
+    const user = await User.findById(ownerId).select(
+      'email authProvider phoneNumber'
+    );
 
     if (!user) {
       res.status(404).json({
         success: false,
         message: 'Không tìm thấy người dùng',
+      });
+      return;
+    }
+
+    // LOCAL users phải có số điện thoại để nhận passcode qua SMS
+    if (user.authProvider === 'LOCAL' && !user.phoneNumber) {
+      res.status(400).json({
+        success: false,
+        message:
+          'Bạn cần cập nhật số điện thoại trong hồ sơ trước khi tạo bài đăng',
+        errorCode: 'PHONE_NUMBER_REQUIRED',
       });
       return;
     }
@@ -92,21 +106,34 @@ export const sendCreatePostPasscode = async (
     });
 
     try {
-      await sendPostPasscodeEmail({
-        email: user.email,
-        passcode,
-        expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
-      });
-    } catch (emailError) {
+      if (user.authProvider === 'GOOGLE') {
+        // Google users → gửi qua email
+        await sendPostPasscodeEmail({
+          email: user.email,
+          passcode,
+          expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
+        });
+      } else {
+        // LOCAL users → gửi qua SMS
+        await sendPostPasscodeSms({
+          phoneNumber: user.phoneNumber as string,
+          passcode,
+          expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
+        });
+      }
+    } catch (sendError) {
       await PostCreationPasscode.findByIdAndDelete(passcodeDoc._id);
-      throw emailError;
+      throw sendError;
     }
+
+    const deliveryMethod = user.authProvider === 'GOOGLE' ? 'email' : 'SMS';
 
     res.status(200).json({
       success: true,
-      message: 'Đã gửi passcode xác thực tạo bài đăng qua email',
+      message: `Đã gửi passcode xác thực tạo bài đăng qua ${deliveryMethod}`,
       data: {
         expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
+        deliveryMethod,
       },
     });
   } catch (error: unknown) {
