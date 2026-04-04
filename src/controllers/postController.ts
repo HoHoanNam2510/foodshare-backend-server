@@ -178,15 +178,14 @@ export const createPost = async (
       return;
     }
 
-    // 1. Validate cơ bản
+    // 1. Validate cơ bản (location không bắt buộc — map service chưa tích hợp)
     if (
       !title ||
       !images ||
       images.length === 0 ||
       !totalQuantity ||
       !expiryDate ||
-      !pickupTime ||
-      !location
+      !pickupTime
     ) {
       res.status(400).json({
         success: false,
@@ -223,7 +222,7 @@ export const createPost = async (
     }
 
     // 2. Tạo bài đăng mới — status mặc định là PENDING_REVIEW
-    const newPost = await Post.create({
+    const postData: Record<string, unknown> = {
       ownerId,
       type,
       category,
@@ -235,10 +234,16 @@ export const createPost = async (
       price: type === 'P2P_FREE' ? 0 : price || 0,
       expiryDate,
       pickupTime,
-      location,
       status: 'PENDING_REVIEW',
       publishAt,
-    });
+    };
+
+    // Location là optional — chỉ thêm nếu client gửi lên
+    if (location) {
+      postData.location = location;
+    }
+
+    const newPost = await Post.create(postData);
 
     // 3. Đánh dấu passcode đã sử dụng
     passcodeRecord.usedAt = now;

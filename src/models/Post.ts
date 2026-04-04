@@ -16,7 +16,7 @@ export interface IPost extends Document {
     start: Date;
     end: Date;
   };
-  location: {
+  location?: {
     type: 'Point';
     coordinates: [number, number]; // [longitude, latitude]
   };
@@ -75,16 +75,14 @@ const PostSchema = new Schema<IPost>(
       end: { type: Date, required: true },
     },
 
-    // Cấu hình GeoJSON cho Map
+    // Cấu hình GeoJSON cho Map (optional — map service chưa tích hợp)
     location: {
       type: {
         type: String,
         enum: ['Point'],
-        required: true,
       },
       coordinates: {
         type: [Number],
-        required: true, // Bắt buộc phải có tọa độ để hiện lên Map
       },
     },
 

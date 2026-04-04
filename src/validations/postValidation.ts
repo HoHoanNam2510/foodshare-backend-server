@@ -7,7 +7,7 @@ const pointSchema = z.object({
     .length(2, 'coordinates phải có đúng 2 phần tử [lng, lat]'),
 });
 
-export const sendCreatePostPasscodeSchema = z.object({}).strict();
+export const sendCreatePostPasscodeSchema = z.object({}).passthrough();
 
 export const createPostSchema = z.object({
   type: z.enum(['P2P_FREE', 'B2C_MYSTERY_BAG'], {
@@ -21,7 +21,7 @@ export const createPostSchema = z.object({
   price: z.number().min(0).optional(),
   expiryDate: z.string().min(1, 'expiryDate là bắt buộc'),
   pickupTime: z.string().min(1, 'pickupTime là bắt buộc'),
-  location: pointSchema,
+  location: pointSchema.optional(),
   publishAt: z.string().optional(),
   passcode: z.string().regex(/^\d{6}$/, 'Passcode phải gồm đúng 6 chữ số'),
 });
