@@ -20,7 +20,10 @@ export const createPostSchema = z.object({
   totalQuantity: z.number().positive('totalQuantity phải lớn hơn 0'),
   price: z.number().min(0).optional(),
   expiryDate: z.string().min(1, 'expiryDate là bắt buộc'),
-  pickupTime: z.string().min(1, 'pickupTime là bắt buộc'),
+  pickupTime: z.object({
+    start: z.string().min(1, 'pickupTime.start là bắt buộc'),
+    end: z.string().min(1, 'pickupTime.end là bắt buộc'),
+  }),
   location: pointSchema.optional(),
   publishAt: z.string().optional(),
   passcode: z.string().regex(/^\d{6}$/, 'Passcode phải gồm đúng 6 chữ số'),
@@ -45,7 +48,10 @@ export const updatePostSchema = z
       .optional(),
     price: z.number().min(0).optional(),
     expiryDate: z.string().min(1).optional(),
-    pickupTime: z.string().min(1).optional(),
+    pickupTime: z.object({
+      start: z.string().min(1),
+      end: z.string().min(1),
+    }).optional(),
     location: pointSchema.optional(),
     publishAt: z.string().optional(),
   })
@@ -74,7 +80,10 @@ export const adminUpdatePostSchema = z
     remainingQuantity: z.number().min(0).optional(),
     price: z.number().min(0).optional(),
     expiryDate: z.string().min(1).optional(),
-    pickupTime: z.string().min(1).optional(),
+    pickupTime: z.object({
+      start: z.string().min(1),
+      end: z.string().min(1),
+    }).optional(),
     location: pointSchema.optional(),
     publishAt: z.string().optional(),
     status: z

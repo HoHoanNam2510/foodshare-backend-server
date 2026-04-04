@@ -256,10 +256,10 @@ export const createPost = async (
       data: newPost,
     });
 
-    // 5. Background Job — AI Moderation (không chặn response)
-    runAIModerationJob(String(newPost._id)).catch((err) => {
-      console.error('Background AI moderation failed:', err);
-    });
+    // 5. Background Job — AI Moderation (tạm tắt — sẽ bật lại khi có quota Gemini)
+    // runAIModerationJob(String(newPost._id)).catch((err) => {
+    //   console.error('Background AI moderation failed:', err);
+    // });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
 
