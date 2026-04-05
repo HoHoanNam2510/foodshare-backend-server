@@ -7,6 +7,7 @@ export interface IUser extends Document {
   phoneNumber?: string;
   password?: string;
   authProvider: 'LOCAL' | 'GOOGLE';
+  isEmailVerified: boolean;
   isProfileCompleted: boolean;
   role: 'USER' | 'STORE' | 'ADMIN';
   fullName: string;
@@ -48,6 +49,10 @@ const UserSchema = new Schema<IUser>(
       type: String,
       enum: ['LOCAL', 'GOOGLE'],
       default: 'LOCAL',
+    },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
     },
     isProfileCompleted: {
       type: Boolean,

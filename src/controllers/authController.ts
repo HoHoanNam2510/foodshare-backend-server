@@ -1,11 +1,25 @@
 import { Request, Response } from 'express';
 import User from '@/models/User';
+import PendingRegistration from '@/models/PendingRegistration';
 import { hashPassword, comparePassword, generateToken } from '@/utils/auth';
 import { verifyGoogleIdToken } from '@/utils/googleAuth';
+import { sendVerificationEmail } from '@/utils/emailVerification';
 import {
   deleteImageByUrl,
   deleteMultipleImagesByUrl,
 } from '@/services/uploadService';
+
+const CODE_LENGTH = 6;
+const CODE_EXPIRE_MINUTES = 10;
+const MAX_SEND_PER_MINUTE = 3;
+
+function generateNumericCode(length: number): string {
+  let code = '';
+  for (let i = 0; i < length; i += 1) {
+    code += Math.floor(Math.random() * 10).toString();
+  }
+  return code;
+}
 
 function hasRequiredProfileInfo(user: {
   phoneNumber?: string;
@@ -27,14 +41,15 @@ function sanitizeUserData<
   return userData;
 }
 
-// --- API ĐĂNG KÝ (Chỉ dành cho USER và STORE) ---
-export const register = async (req: Request, res: Response): Promise<void> => {
+// --- BƯỚC 1: GỬI MÃ XÁC MINH EMAIL (Chưa tạo account) ---
+export const registerSendCode = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const { email, password, fullName, phoneNumber, defaultAddress, role } =
-      req.body;
+    const { email, password, fullName, phoneNumber, role } = req.body;
 
-    // 2. Chặn quyền đăng ký ADMIN
-    // Nếu client cố tình gửi role là ADMIN, chặn đứng ngay lập tức
+    // Chặn quyền đăng ký ADMIN
     if (role === 'ADMIN') {
       res.status(403).json({
         success: false,
@@ -43,55 +58,179 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // 3. Kiểm tra User đã tồn tại chưa (Check cả email và số điện thoại nếu có)
+    const normalizedEmail = email.toLowerCase();
+
+    // Kiểm tra User đã tồn tại chưa
     const existingUser = await User.findOne({
       $or: [
-        { email: email.toLowerCase() },
+        { email: normalizedEmail },
         ...(phoneNumber ? [{ phoneNumber }] : []),
       ],
     });
 
     if (existingUser) {
-      res.status(409).json({
+      if (existingUser.email === normalizedEmail) {
+        const provider = existingUser.authProvider;
+        if (provider === 'GOOGLE') {
+          res.status(409).json({
+            success: false,
+            message:
+              'Email này đã được đăng ký bằng Google. Vui lòng đăng nhập bằng Google.',
+          });
+        } else {
+          res.status(409).json({
+            success: false,
+            message: 'Email này đã được đăng ký. Vui lòng đăng nhập.',
+          });
+        }
+      } else {
+        res.status(409).json({
+          success: false,
+          message: 'Số điện thoại đã được sử dụng',
+        });
+      }
+      return;
+    }
+
+    // Rate limit: tối đa 3 lần/phút cho cùng email
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const recentCount = await PendingRegistration.countDocuments({
+      email: normalizedEmail,
+      createdAt: { $gte: oneMinuteAgo },
+    });
+
+    if (recentCount >= MAX_SEND_PER_MINUTE) {
+      res.status(429).json({
         success: false,
-        message: 'Email hoặc Số điện thoại đã được sử dụng',
+        message:
+          'Bạn đã gửi mã quá nhiều lần. Vui lòng thử lại sau khoảng 1 phút',
       });
       return;
     }
 
-    // 4. Mã hóa mật khẩu và tạo User
+    // Hash password trước khi lưu tạm
     const hashedPassword = await hashPassword(password);
+    const code = generateNumericCode(CODE_LENGTH);
+    const expiresAt = new Date(Date.now() + CODE_EXPIRE_MINUTES * 60 * 1000);
+
+    // Xóa các pending cũ của email này
+    await PendingRegistration.deleteMany({ email: normalizedEmail });
+
+    // Lưu thông tin đăng ký tạm + mã xác minh
+    const pending = await PendingRegistration.create({
+      email: normalizedEmail,
+      fullName,
+      phoneNumber: phoneNumber || '',
+      hashedPassword,
+      code,
+      expiresAt,
+    });
+
+    // Gửi email xác minh
+    try {
+      await sendVerificationEmail({
+        email: normalizedEmail,
+        code,
+        expiresInMinutes: CODE_EXPIRE_MINUTES,
+      });
+    } catch (sendError) {
+      await PendingRegistration.findByIdAndDelete(pending._id);
+      throw sendError;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã gửi mã xác minh đến email của bạn',
+      data: { expiresInMinutes: CODE_EXPIRE_MINUTES },
+    });
+  } catch (error: unknown) {
+    console.error('registerSendCode error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi gửi mã xác minh',
+      error: errorMessage,
+    });
+  }
+};
+
+// --- BƯỚC 2: XÁC MINH MÃ + TẠO ACCOUNT ---
+export const registerVerify = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email, code } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    // Tìm pending registration còn hiệu lực
+    const pending = await PendingRegistration.findOne({
+      email: normalizedEmail,
+      code,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!pending) {
+      res.status(400).json({
+        success: false,
+        message: 'Mã xác minh không hợp lệ hoặc đã hết hạn',
+      });
+      return;
+    }
+
+    // Kiểm tra lại email chưa bị đăng ký (race condition)
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      await PendingRegistration.deleteMany({ email: normalizedEmail });
+      res.status(409).json({
+        success: false,
+        message: 'Email đã được sử dụng',
+      });
+      return;
+    }
+
+    // Tạo User thật
     const isProfileCompleted = hasRequiredProfileInfo({
-      phoneNumber,
-      defaultAddress,
+      phoneNumber: pending.phoneNumber,
+      defaultAddress: '',
     });
 
     const newUser = await User.create({
-      email: email.toLowerCase(),
-      password: hashedPassword,
-      fullName,
-      phoneNumber,
-      defaultAddress: defaultAddress || '',
+      email: normalizedEmail,
+      password: pending.hashedPassword,
+      fullName: pending.fullName,
+      phoneNumber: pending.phoneNumber || undefined,
+      defaultAddress: '',
       authProvider: 'LOCAL',
+      isEmailVerified: true, // Đã xác minh qua code
       isProfileCompleted,
-      role: role || 'USER', // Mặc định là USER
+      role: 'USER',
     });
 
-    // 5. Chuẩn bị dữ liệu trả về (ẩn password)
+    // Dọn dẹp pending
+    await PendingRegistration.deleteMany({ email: normalizedEmail });
+
+    // Auto-login: tạo token
+    const token = generateToken(newUser._id.toString(), newUser.role);
     const userToReturn = sanitizeUserData(newUser);
 
     res.status(201).json({
       success: true,
       message: 'Đăng ký tài khoản thành công',
+      token,
       data: userToReturn,
       onboardingRequired: !newUser.isProfileCompleted,
     });
   } catch (error: unknown) {
+    console.error('registerVerify error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
 
-    res
-      .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: errorMessage,
+    });
   }
 };
 
@@ -190,6 +329,7 @@ export const googleLogin = async (
         email: googleUser.email,
         googleId: googleUser.googleId,
         authProvider: 'GOOGLE',
+        isEmailVerified: true,
         isProfileCompleted,
         fullName: googleUser.fullName,
         avatar: googleUser.avatar || '',

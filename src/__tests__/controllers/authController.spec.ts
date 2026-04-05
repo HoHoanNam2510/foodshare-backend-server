@@ -4,12 +4,15 @@ import {
   completeProfile,
   googleLogin,
   login,
-  register,
+  registerSendCode,
+  registerVerify,
   setPassword,
 } from '@/controllers/authController';
 import User from '@/models/User';
+import PendingRegistration from '@/models/PendingRegistration';
 import { verifyGoogleIdToken } from '@/utils/googleAuth';
 import { comparePassword, generateToken, hashPassword } from '@/utils/auth';
+import { sendVerificationEmail } from '@/utils/emailVerification';
 
 jest.mock('@/models/User', () => ({
   __esModule: true,
@@ -33,6 +36,22 @@ jest.mock('@/utils/auth', () => ({
   generateToken: jest.fn(),
 }));
 
+jest.mock('@/models/PendingRegistration', () => ({
+  __esModule: true,
+  default: {
+    countDocuments: jest.fn(),
+    deleteMany: jest.fn(),
+    create: jest.fn(),
+    findOne: jest.fn(),
+    findByIdAndDelete: jest.fn(),
+  },
+}));
+
+jest.mock('@/utils/emailVerification', () => ({
+  __esModule: true,
+  sendVerificationEmail: jest.fn(),
+}));
+
 describe('authController', () => {
   const mockedUserModel = User as unknown as {
     findOne: jest.Mock;
@@ -41,10 +60,19 @@ describe('authController', () => {
     findById: jest.Mock;
   };
 
+  const mockedPendingRegistration = PendingRegistration as unknown as {
+    countDocuments: jest.Mock;
+    deleteMany: jest.Mock;
+    create: jest.Mock;
+    findOne: jest.Mock;
+    findByIdAndDelete: jest.Mock;
+  };
+
   const mockedVerifyGoogleIdToken = verifyGoogleIdToken as jest.Mock;
   const mockedHashPassword = hashPassword as jest.Mock;
   const mockedComparePassword = comparePassword as jest.Mock;
   const mockedGenerateToken = generateToken as jest.Mock;
+  const mockedSendVerificationEmail = sendVerificationEmail as jest.Mock;
 
   const createResponse = (): Response => {
     const res = {
@@ -59,7 +87,7 @@ describe('authController', () => {
     jest.clearAllMocks();
   });
 
-  it('registers a local account successfully', async () => {
+  it('sends verification code on register step 1', async () => {
     const req = {
       body: {
         email: 'new.user@example.com',
@@ -71,23 +99,62 @@ describe('authController', () => {
 
     mockedUserModel.findOne.mockResolvedValue(null);
     mockedHashPassword.mockResolvedValue('hashed-password');
+    mockedPendingRegistration.countDocuments.mockResolvedValue(0);
+    mockedPendingRegistration.deleteMany.mockResolvedValue({});
+    mockedPendingRegistration.create.mockResolvedValue({
+      _id: 'pending-id',
+      email: 'new.user@example.com',
+    });
+    mockedSendVerificationEmail.mockResolvedValue(undefined);
+
+    await registerSendCode(req, res);
+
+    expect(mockedPendingRegistration.create).toHaveBeenCalled();
+    expect(mockedSendVerificationEmail).toHaveBeenCalled();
+    expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
+    expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
+      expect.objectContaining({ success: true })
+    );
+  });
+
+  it('creates account on register step 2 with valid code', async () => {
+    const req = {
+      body: {
+        email: 'new.user@example.com',
+        code: '123456',
+      },
+    } as Request;
+    const res = createResponse();
+
+    mockedPendingRegistration.findOne.mockResolvedValue({
+      email: 'new.user@example.com',
+      fullName: 'New User',
+      phoneNumber: '',
+      hashedPassword: 'hashed-password',
+    });
+    mockedUserModel.findOne.mockResolvedValue(null);
     mockedUserModel.create.mockResolvedValue({
+      _id: { toString: () => 'user-id-new' },
+      role: 'USER',
       isProfileCompleted: false,
       toObject: () => ({ email: 'new.user@example.com' }),
     });
+    mockedPendingRegistration.deleteMany.mockResolvedValue({});
+    mockedGenerateToken.mockReturnValue('jwt-token');
 
-    await register(req, res);
+    await registerVerify(req, res);
 
     expect(mockedUserModel.create).toHaveBeenCalledWith(
       expect.objectContaining({
         authProvider: 'LOCAL',
+        isEmailVerified: true,
       })
     );
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(201);
     expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
       expect.objectContaining({
         success: true,
-        onboardingRequired: true,
+        token: 'jwt-token',
       })
     );
   });
