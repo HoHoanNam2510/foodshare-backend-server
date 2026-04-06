@@ -135,7 +135,8 @@ export const deleteUser = async (
 ): Promise<void> => {
   try {
     const id = getParamAsString(req.params.id);
-    await deleteUserService(id);
+    const requesterId = req.user!.id;
+    await deleteUserService(id, requesterId);
 
     res.status(204).send();
   } catch (error: unknown) {

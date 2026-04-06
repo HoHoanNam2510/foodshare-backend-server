@@ -365,7 +365,14 @@ export async function reviewKyc(
     throw new UserServiceError('Không tìm thấy người dùng', 404);
   }
 
-  // Chỉ xét duyệt user đang PENDING và đã nộp KYC documents
+  // Chỉ xét duyệt user đang ở trạng thái PENDING_KYC
+  if (user.status !== 'PENDING_KYC') {
+    throw new UserServiceError(
+      'Tài khoản này không có đơn đăng ký KYC đang chờ duyệt',
+      400
+    );
+  }
+
   if (user.kycDocuments.length === 0) {
     throw new UserServiceError(
       'Người dùng chưa nộp tài liệu KYC',
@@ -373,18 +380,13 @@ export async function reviewKyc(
     );
   }
 
-  if (user.role === 'STORE' && user.kycStatus === 'VERIFIED') {
-    throw new UserServiceError(
-      'Người dùng đã được duyệt trước đó',
-      409
-    );
-  }
-
   if (action === 'APPROVE') {
     user.kycStatus = 'VERIFIED';
     user.role = 'STORE';
+    user.status = 'ACTIVE';
   } else {
     user.kycStatus = 'REJECTED';
+    user.status = 'ACTIVE'; // Trả về ACTIVE sau khi từ chối, cho phép nộp lại
     // Không xóa storeInfo và kycDocuments — giữ lại để user có thể xem lại và nộp lại
   }
 
@@ -392,12 +394,27 @@ export async function reviewKyc(
   return toSafeUser(updatedUser);
 }
 
-export async function deleteUser(id: string): Promise<Record<string, unknown>> {
-  const deletedUser = await User.findByIdAndDelete(id);
+export async function deleteUser(
+  id: string,
+  requesterId: string
+): Promise<Record<string, unknown>> {
+  if (id === requesterId) {
+    throw new UserServiceError('Không thể xóa tài khoản của chính mình', 403);
+  }
 
-  if (!deletedUser) {
+  const user = await User.findById(id);
+
+  if (!user) {
     throw new UserServiceError('Không tìm thấy người dùng', 404);
   }
 
-  return toSafeUser(deletedUser);
+  if (user.status === 'ACTIVE') {
+    throw new UserServiceError(
+      'Không thể xóa tài khoản đang hoạt động. Vui lòng khóa tài khoản trước.',
+      400
+    );
+  }
+
+  await User.findByIdAndDelete(id);
+  return toSafeUser(user);
 }

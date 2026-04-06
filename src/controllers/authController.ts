@@ -146,6 +146,42 @@ export const registerSendCode = async (
   }
 };
 
+// --- CHỈ XÁC MINH MÃ (Không tạo account — dùng cho admin tạo tài khoản) ---
+export const verifyCodeOnly = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email, code } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    const pending = await PendingRegistration.findOne({
+      email: normalizedEmail,
+      code,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!pending) {
+      res.status(400).json({
+        success: false,
+        message: 'Mã xác minh không hợp lệ hoặc đã hết hạn',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Mã xác minh hợp lệ',
+    });
+  } catch (error: unknown) {
+    console.error('verifyCodeOnly error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+    });
+  }
+};
+
 // --- BƯỚC 2: XÁC MINH MÃ + TẠO ACCOUNT ---
 export const registerVerify = async (
   req: Request,
@@ -747,7 +783,7 @@ export const registerStore = async (
     }
 
     // Kiểm tra đã có đơn đăng ký đang chờ duyệt
-    if (user.kycStatus === 'PENDING' && user.kycDocuments.length > 0) {
+    if (user.status === 'PENDING_KYC') {
       res.status(409).json({
         success: false,
         message:
@@ -758,10 +794,11 @@ export const registerStore = async (
 
     const { storeInfo, kycDocuments } = req.body;
 
-    // Cập nhật thông tin Store và KYC
+    // Cập nhật thông tin Store và KYC; chuyển status → PENDING_KYC
     user.storeInfo = storeInfo;
     user.kycDocuments = kycDocuments;
     user.kycStatus = 'PENDING';
+    user.status = 'PENDING_KYC';
     // Chưa chuyển role → vẫn là USER cho đến khi Admin duyệt
 
     await user.save();

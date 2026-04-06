@@ -3,7 +3,7 @@ import { z } from 'zod';
 const userRoleSchema = z.enum(['USER', 'STORE', 'ADMIN']);
 const authProviderSchema = z.enum(['LOCAL', 'GOOGLE']);
 const kycStatusSchema = z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
-const userStatusSchema = z.enum(['ACTIVE', 'BANNED']);
+const userStatusSchema = z.enum(['ACTIVE', 'BANNED', 'PENDING_KYC']);
 const sortBySchema = z.enum([
   'createdAt',
   'updatedAt',
@@ -25,7 +25,9 @@ const locationSchema = z.object({
 
 const storeInfoSchema = z
   .object({
+    businessName: z.string().min(1).optional(),
     openHours: z.string().min(1).optional(),
+    closeHours: z.string().min(1).optional(),
     description: z.string().min(1).optional(),
     businessAddress: z.string().min(1).optional(),
   })

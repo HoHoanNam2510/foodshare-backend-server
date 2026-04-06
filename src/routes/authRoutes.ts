@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   registerSendCode,
   registerVerify,
+  verifyCodeOnly,
   login,
   googleLogin,
   completeProfile,
@@ -20,6 +21,7 @@ import { validateBody } from '../middlewares/validateBodyMiddleware';
 import {
   registerSchema,
   registerVerifySchema,
+  verifyCodeOnlySchema,
   loginSchema,
   googleLoginSchema,
   completeProfileSchema,
@@ -36,6 +38,9 @@ router.post('/register/send-code', validateBody(registerSchema), registerSendCod
 
 // [POST] /api/auth/register/verify     (Bước 2: xác minh mã + tạo account)
 router.post('/register/verify', validateBody(registerVerifySchema), registerVerify);
+
+// [POST] /api/auth/register/verify-code  (Chỉ xác minh mã, không tạo account — dùng cho admin)
+router.post('/register/verify-code', validateBody(verifyCodeOnlySchema), verifyCodeOnly);
 
 // [POST] /api/auth/login
 router.post('/login', validateBody(loginSchema), login);

@@ -48,6 +48,11 @@ export const registerStoreSchema = z.object({
     .min(1, 'Cần ít nhất 1 tài liệu KYC'),
 });
 
+export const verifyCodeOnlySchema = z.object({
+  email: z.string().email('Email không hợp lệ'),
+  code: z.string().regex(/^\d{6}$/, 'Mã xác minh phải gồm đúng 6 chữ số'),
+});
+
 export const updateProfileSchema = z.object({
   fullName: z.string().min(1, 'Họ tên là bắt buộc').optional(),
   phoneNumber: z.string().min(8, 'Số điện thoại không hợp lệ').optional(),

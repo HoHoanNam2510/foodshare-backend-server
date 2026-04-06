@@ -28,7 +28,8 @@ export interface IUser extends Document {
   };
   greenPoints: number;
   averageRating: number;
-  status: 'ACTIVE' | 'BANNED';
+  /** PENDING_KYC: user đã nộp hồ sơ cửa hàng, đang chờ admin xét duyệt */
+  status: 'ACTIVE' | 'BANNED' | 'PENDING_KYC';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -100,7 +101,7 @@ const UserSchema = new Schema<IUser>(
     averageRating: { type: Number, default: 5.0 },
     status: {
       type: String,
-      enum: ['ACTIVE', 'BANNED'],
+      enum: ['ACTIVE', 'BANNED', 'PENDING_KYC'],
       default: 'ACTIVE',
     },
   },
