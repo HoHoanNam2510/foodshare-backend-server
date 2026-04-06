@@ -6,6 +6,7 @@ import {
   getUserById,
   updateUser,
   deleteUser,
+  reviewKyc,
 } from '@/controllers/userController';
 import { verifyAuth, verifyAdmin } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validateBodyMiddleware';
@@ -18,6 +19,7 @@ import {
   getUsersQuerySchema,
   userIdParamSchema,
   updateUserSchema,
+  reviewKycSchema,
 } from '../validations/userValidation';
 
 const router = Router();
@@ -39,6 +41,14 @@ router.put(
   validateParams(userIdParamSchema),
   validateBody(updateUserSchema),
   updateUser
+);
+
+// [PATCH] /api/users/:id/kyc-review  (Admin duyệt/từ chối KYC)
+router.patch(
+  '/:id/kyc-review',
+  validateParams(userIdParamSchema),
+  validateBody(reviewKycSchema),
+  reviewKyc
 );
 
 // [DELETE] /api/users/:id

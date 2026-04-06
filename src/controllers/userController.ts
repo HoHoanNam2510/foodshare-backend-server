@@ -7,6 +7,7 @@ import {
   getUserById as getUserByIdService,
   updateUser as updateUserService,
   deleteUser as deleteUserService,
+  reviewKyc as reviewKycService,
 } from '@/services/userService';
 
 function getParamAsString(value: string | string[] | undefined): string {
@@ -97,6 +98,30 @@ export const updateUser = async (
     res.status(200).json({
       success: true,
       message: 'Cập nhật người dùng thành công',
+      data: user,
+    });
+  } catch (error: unknown) {
+    handleUserError(error, res);
+  }
+};
+
+export const reviewKyc = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const id = getParamAsString(req.params.id);
+    const { action, rejectionReason } = req.body;
+    const user = await reviewKycService(id, action, rejectionReason);
+
+    const message =
+      action === 'APPROVE'
+        ? 'Đã duyệt đăng ký cửa hàng thành công'
+        : 'Đã từ chối đăng ký cửa hàng';
+
+    res.status(200).json({
+      success: true,
+      message,
       data: user,
     });
   } catch (error: unknown) {

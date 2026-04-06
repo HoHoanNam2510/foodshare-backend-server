@@ -98,6 +98,13 @@ export const userIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'User ID không hợp lệ'),
 });
 
+export const reviewKycSchema = z.object({
+  action: z.enum(['APPROVE', 'REJECT'], {
+    required_error: 'Hành động là bắt buộc (APPROVE hoặc REJECT)',
+  }),
+  rejectionReason: z.string().optional(),
+});
+
 export const getUsersQuerySchema = z.object({
   search: z.string().trim().min(1).optional(),
   role: userRoleSchema.optional(),

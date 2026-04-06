@@ -354,6 +354,44 @@ export async function updateUser(
   return toSafeUser(updatedUser);
 }
 
+export async function reviewKyc(
+  id: string,
+  action: 'APPROVE' | 'REJECT',
+  rejectionReason?: string
+): Promise<Record<string, unknown>> {
+  const user = await User.findById(id);
+
+  if (!user) {
+    throw new UserServiceError('Không tìm thấy người dùng', 404);
+  }
+
+  // Chỉ xét duyệt user đang PENDING và đã nộp KYC documents
+  if (user.kycDocuments.length === 0) {
+    throw new UserServiceError(
+      'Người dùng chưa nộp tài liệu KYC',
+      400
+    );
+  }
+
+  if (user.role === 'STORE' && user.kycStatus === 'VERIFIED') {
+    throw new UserServiceError(
+      'Người dùng đã được duyệt trước đó',
+      409
+    );
+  }
+
+  if (action === 'APPROVE') {
+    user.kycStatus = 'VERIFIED';
+    user.role = 'STORE';
+  } else {
+    user.kycStatus = 'REJECTED';
+    // Không xóa storeInfo và kycDocuments — giữ lại để user có thể xem lại và nộp lại
+  }
+
+  const updatedUser = await user.save();
+  return toSafeUser(updatedUser);
+}
+
 export async function deleteUser(id: string): Promise<Record<string, unknown>> {
   const deletedUser = await User.findByIdAndDelete(id);
 

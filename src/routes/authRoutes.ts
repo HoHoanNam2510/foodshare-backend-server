@@ -9,6 +9,7 @@ import {
   logout,
   getMe,
   updateProfile,
+  registerStore,
 } from '../controllers/authController';
 import {
   sendEmailVerificationCode,
@@ -25,6 +26,7 @@ import {
   setPasswordSchema,
   verifyEmailSchema,
   updateProfileSchema,
+  registerStoreSchema,
 } from '../validations/authValidation';
 
 const router = Router();
@@ -66,6 +68,14 @@ router.post(
   verifyAuth,
   validateBody(verifyEmailSchema),
   verifyEmail
+);
+
+// [POST] /api/auth/register-store  (Đăng ký cửa hàng — nâng cấp USER → STORE)
+router.post(
+  '/register-store',
+  verifyAuth,
+  validateBody(registerStoreSchema),
+  registerStore
 );
 
 // [POST] /api/auth/logout

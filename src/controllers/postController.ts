@@ -45,7 +45,7 @@ export const sendCreatePostPasscode = async (
     }
 
     const user = await User.findById(ownerId).select(
-      'email authProvider isEmailVerified'
+      'email authProvider isEmailVerified role kycStatus'
     );
 
     if (!user) {
@@ -63,6 +63,17 @@ export const sendCreatePostPasscode = async (
         message:
           'Bạn cần xác minh email trước khi tạo bài đăng',
         errorCode: 'EMAIL_NOT_VERIFIED',
+      });
+      return;
+    }
+
+    // Store phải được duyệt KYC trước khi đăng bài
+    if (user.role === 'STORE' && user.kycStatus !== 'VERIFIED') {
+      res.status(403).json({
+        success: false,
+        message:
+          'Cửa hàng cần được xác minh KYC trước khi tạo bài đăng',
+        errorCode: 'KYC_NOT_VERIFIED',
       });
       return;
     }

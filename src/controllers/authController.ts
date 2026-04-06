@@ -47,16 +47,7 @@ export const registerSendCode = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { email, password, fullName, phoneNumber, role } = req.body;
-
-    // Chặn quyền đăng ký ADMIN
-    if (role === 'ADMIN') {
-      res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền tạo tài khoản Quản trị viên',
-      });
-      return;
-    }
+    const { email, password, fullName, phoneNumber } = req.body;
 
     const normalizedEmail = email.toLowerCase();
 
@@ -614,7 +605,6 @@ export const updateProfile = async (
       defaultAddress,
       avatar,
       storeInfo,
-      kycDocuments,
     } = req.body;
 
     // Kiểm tra trùng số điện thoại
@@ -640,7 +630,6 @@ export const updateProfile = async (
     if (defaultAddress !== undefined)
       updateData.defaultAddress = defaultAddress;
     if (avatar !== undefined) updateData.avatar = avatar;
-    if (kycDocuments !== undefined) updateData.kycDocuments = kycDocuments;
     if (storeInfo !== undefined) updateData.storeInfo = storeInfo;
 
     // Tính toán lại isProfileCompleted
@@ -673,16 +662,6 @@ export const updateProfile = async (
       deleteImageByUrl(currentUser.avatar).catch(() => {});
     }
 
-    // Xóa KYC docs cũ không còn trong danh sách mới
-    if (kycDocuments !== undefined && currentUser.kycDocuments) {
-      const removedDocs = currentUser.kycDocuments.filter(
-        (oldUrl: string) => !kycDocuments.includes(oldUrl)
-      );
-      if (removedDocs.length > 0) {
-        deleteMultipleImagesByUrl(removedDocs).catch(() => {});
-      }
-    }
-
     const user = await User.findByIdAndUpdate(
       userId,
       { $set: updateData },
@@ -705,6 +684,97 @@ export const updateProfile = async (
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : 'Cập nhật hồ sơ thất bại';
+
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: errorMessage,
+    });
+  }
+};
+
+// --- API ĐĂNG KÝ CỬA HÀNG (Nâng cấp USER → STORE) ---
+export const registerStore = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy người dùng',
+      });
+      return;
+    }
+
+    // Chỉ USER mới được đăng ký Store
+    if (user.role === 'STORE') {
+      res.status(409).json({
+        success: false,
+        message: 'Tài khoản của bạn đã là cửa hàng',
+      });
+      return;
+    }
+
+    if (user.role === 'ADMIN') {
+      res.status(403).json({
+        success: false,
+        message: 'Tài khoản Admin không thể đăng ký cửa hàng',
+      });
+      return;
+    }
+
+    // Kiểm tra profile đã hoàn thiện chưa
+    if (!user.isProfileCompleted) {
+      res.status(400).json({
+        success: false,
+        message:
+          'Vui lòng hoàn thiện hồ sơ cá nhân (số điện thoại, địa chỉ) trước khi đăng ký cửa hàng',
+      });
+      return;
+    }
+
+    // Kiểm tra đã có đơn đăng ký đang chờ duyệt
+    if (user.kycStatus === 'PENDING' && user.kycDocuments.length > 0) {
+      res.status(409).json({
+        success: false,
+        message:
+          'Bạn đã có đơn đăng ký cửa hàng đang chờ duyệt. Vui lòng chờ Admin xét duyệt.',
+      });
+      return;
+    }
+
+    const { storeInfo, kycDocuments } = req.body;
+
+    // Cập nhật thông tin Store và KYC
+    user.storeInfo = storeInfo;
+    user.kycDocuments = kycDocuments;
+    user.kycStatus = 'PENDING';
+    // Chưa chuyển role → vẫn là USER cho đến khi Admin duyệt
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message:
+        'Đã gửi đơn đăng ký cửa hàng thành công. Vui lòng chờ Admin xét duyệt.',
+      data: sanitizeUserData(user),
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Đăng ký cửa hàng thất bại';
 
     res.status(500).json({
       success: false,
