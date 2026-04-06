@@ -390,6 +390,45 @@ export const deletePost = async (
 // II. NHÓM HANDLER PUBLIC / TÌM KIẾM BẢN ĐỒ
 // =============================================
 
+// --- EXPLORE: Lấy danh sách bài đăng AVAILABLE cho màn hình Explore ---
+export const getExplorePosts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { type, sort } = req.query;
+
+    const filter: Record<string, unknown> = { status: 'AVAILABLE' };
+
+    if (type && typeof type === 'string') {
+      filter.type = type;
+    }
+
+    // Mặc định sắp xếp mới nhất; 'expiring' → hạn sử dụng sớm nhất
+    let sortOption: Record<string, 1 | -1> = { createdAt: -1 };
+    if (sort === 'expiring') {
+      sortOption = { expiryDate: 1 };
+    }
+    // 'closest' cần GPS → xử lý client-side, server vẫn trả newest
+
+    const posts = await Post.find(filter)
+      .populate('ownerId', 'fullName avatar averageRating')
+      .sort(sortOption)
+      .limit(100);
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách bài đăng thành công',
+      data: posts,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
 // --- Xem chi tiết 1 bài đăng (getPostDetail) ---
 export const getPostDetail = async (
   req: Request,

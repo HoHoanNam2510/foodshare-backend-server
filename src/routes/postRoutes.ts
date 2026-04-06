@@ -7,6 +7,7 @@ import {
   deletePost,
   getPostDetail,
   searchMapPosts,
+  getExplorePosts,
   adminGetPosts,
   adminUpdatePost,
   adminToggleHidePost,
@@ -82,6 +83,10 @@ router.delete('/:id', verifyAuth, deletePost);
 // NHÓM PUBLIC / TÌM KIẾM BẢN ĐỒ
 // Đặt /map trước /:id để tránh bị catch
 // =============================================
+
+// [GET] /api/posts/explore
+// (Lấy danh sách bài đăng AVAILABLE cho màn hình Explore — không cần GPS)
+router.get('/explore', getExplorePosts);
 
 // [GET] /api/posts/map
 // (PST_F05, MAP_F01-F03: Tìm bài đăng xung quanh vị trí GPS)
