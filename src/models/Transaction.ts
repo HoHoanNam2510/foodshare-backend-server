@@ -14,7 +14,7 @@ export interface ITransaction extends Document {
     | 'COMPLETED'
     | 'CANCELLED';
   paymentMethod: 'FREE' | 'MOMO' | 'ZALOPAY';
-  qrCode?: string;
+  verificationCode?: string;
   expiredAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -63,8 +63,8 @@ const TransactionSchema = new Schema<ITransaction>(
       },
     },
 
-    // QR Code có thể rỗng lúc mới tạo đơn, nên thêm sparse: true để không lỗi unique index
-    qrCode: { type: String, unique: true, sparse: true },
+    // Mã xác minh QR — sinh khi transaction được ACCEPTED (P2P) hoặc ESCROWED (B2C); sparse để tránh lỗi unique khi null
+    verificationCode: { type: String, unique: true, sparse: true },
 
     expiredAt: { type: Date },
   },

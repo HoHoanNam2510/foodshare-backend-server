@@ -12,8 +12,8 @@ export class GreenPointServiceError extends Error {
   }
 }
 
-// Hằng số điểm thưởng
-const P2P_REQUESTER_POINTS = 5;
+// Hằng số điểm thưởng (P2P: Receiver = 3 pts, Donor = 10 pts — theo P2P_TRANSACTION.md)
+const P2P_REQUESTER_POINTS = 3;
 const P2P_OWNER_POINTS = 10;
 const B2C_REQUESTER_POINTS = 5;
 const B2C_OWNER_POINTS = 5;

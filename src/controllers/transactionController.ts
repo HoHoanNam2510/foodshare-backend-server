@@ -35,7 +35,23 @@ export const createRequest = async (
       return;
     }
 
-    // 3. Kiểm tra số lượng
+    // 3. Kiểm tra yêu cầu trùng lặp — mỗi người chỉ được có 1 yêu cầu active/accepted cho mỗi bài đăng
+    const existingRequest = await Transaction.findOne({
+      postId,
+      requesterId,
+      type: 'REQUEST',
+      status: { $in: ['PENDING', 'ACCEPTED'] },
+    });
+    if (existingRequest) {
+      res.status(400).json({
+        success: false,
+        message:
+          'Bạn đã có yêu cầu đang chờ hoặc đã được chấp nhận cho bài đăng này. Vui lòng đợi kết quả hoặc hủy yêu cầu cũ trước khi gửi lại.',
+      });
+      return;
+    }
+
+    // 4. Kiểm tra số lượng
     if (quantity > post.remainingQuantity) {
       res.status(400).json({
         success: false,
@@ -44,7 +60,7 @@ export const createRequest = async (
       return;
     }
 
-    // 4. Tạo Transaction
+    // 5. Tạo Transaction
     const newTransaction = await Transaction.create({
       postId,
       requesterId,
@@ -202,25 +218,21 @@ export const respondToRequest = async (
       // Cập nhật trạng thái Transaction sang ACCEPTED
       transaction.status = 'ACCEPTED';
 
-      // Sinh QR cho P2P (TRX_F11) — người xin mang ra nhận đồ và quét
+      // Sinh mã xác minh QR cho P2P (TRX_F11) — người xin mang ra nhận đồ và quét
       const rawQrString = `${transaction._id}-${transaction.requesterId}-${crypto.randomBytes(4).toString('hex')}`;
-      transaction.qrCode = rawQrString;
+      transaction.verificationCode = rawQrString;
 
       await transaction.save();
 
-      // Cập nhật Post (TRX_F06)
+      // Cập nhật Post (TRX_F06): luôn set BOOKED khi duyệt; HIDDEN xử lý khi hoàn tất
       post.remainingQuantity -= transaction.quantity;
-      if (post.remainingQuantity === 0) {
-        post.status = 'OUT_OF_STOCK';
-      } else {
-        post.status = 'BOOKED';
-      }
+      post.status = 'BOOKED';
       await post.save();
 
       res.status(200).json({
         success: true,
         message: 'Đã chấp nhận yêu cầu xin đồ',
-        data: { qrCode: rawQrString },
+        data: { verificationCode: rawQrString },
       });
       return;
     }
@@ -357,9 +369,9 @@ export const processPayment = async (
     // Nếu thanh toán hợp lệ -> Đổi trạng thái sang ESCROWED (TRX_F08)
     transaction.status = 'ESCROWED';
 
-    // Sinh mã QR duy nhất cho đơn hàng (TRX_F11)
+    // Sinh mã xác minh QR duy nhất cho đơn hàng (TRX_F11)
     const rawQrString = `${transaction._id}-${requesterId}-${crypto.randomBytes(4).toString('hex')}`;
-    transaction.qrCode = rawQrString;
+    transaction.verificationCode = rawQrString;
 
     await transaction.save();
 
@@ -383,7 +395,7 @@ export const scanQrAndComplete = async (
   res: Response
 ): Promise<void> => {
   try {
-    const ownerId = req.user?.id; // Người quét QR (Store/Người cho)
+    const userId = req.user?.id;
     const { qrCode } = req.body;
 
     if (!qrCode) {
@@ -393,11 +405,14 @@ export const scanQrAndComplete = async (
       return;
     }
 
-    // Tìm đơn hàng khớp với mã QR và đang ở trạng thái ESCROWED (đã thanh toán) hoặc ACCEPTED (đã duyệt cho P2P)
+    // P2P (REQUEST/ACCEPTED): Người nhận (requesterId) quét QR từ người cho
+    // B2C (ORDER/ESCROWED): Chủ cửa hàng (ownerId) quét QR từ khách
     const transaction = await Transaction.findOne({
-      qrCode,
-      ownerId, // Đảm bảo đúng chủ post mới quét được
-      status: { $in: ['ESCROWED', 'ACCEPTED'] },
+      verificationCode: qrCode,
+      $or: [
+        { requesterId: userId, type: 'REQUEST', status: 'ACCEPTED' },
+        { ownerId: userId, type: 'ORDER', status: 'ESCROWED' },
+      ],
     });
 
     if (!transaction) {
@@ -412,6 +427,13 @@ export const scanQrAndComplete = async (
     // Hoàn tất giao dịch (TRX_F13)
     transaction.status = 'COMPLETED';
     await transaction.save();
+
+    // Cập nhật Post: ẩn bài đăng nếu hết hàng (Giai đoạn 5 — P2P_TRANSACTION.md)
+    const post = await Post.findById(transaction.postId);
+    if (post && post.remainingQuantity === 0) {
+      post.status = 'HIDDEN';
+      await post.save();
+    }
 
     // Cộng điểm GreenPoint cho cả 2 bên (Internal Hook)
     await awardTransactionPoints(
@@ -446,6 +468,29 @@ export const getMyTransactions = async (
 
     const transactions = await Transaction.find({ requesterId })
       .populate('postId', 'title images type price')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, data: transactions });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- XEM GIAO DỊCH CỦA TÔI (TƯ CÁCH NGƯỜI CHO / STORE) ---
+export const getMyTransactionsAsOwner = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const ownerId = req.user?.id;
+
+    const transactions = await Transaction.find({ ownerId })
+      .populate('postId', 'title images type price')
+      .populate('requesterId', 'fullName avatar averageRating')
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, data: transactions });
@@ -503,6 +548,40 @@ export const cancelOrderByStore = async (
       success: true,
       message: 'Đã hủy đơn và hoàn tiền cho khách',
     });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- TRX_F14: XEM CHI TIẾT GIAO DỊCH THEO ID (RECEIVER HOẶC DONOR) ---
+export const getTransactionById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const transactionId = req.params.id;
+    const userId = req.user?.id;
+
+    const transaction = await Transaction.findOne({
+      _id: transactionId,
+      $or: [{ requesterId: userId }, { ownerId: userId }],
+    })
+      .populate('postId', 'title images type price')
+      .populate('requesterId', 'fullName avatar averageRating');
+
+    if (!transaction) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy giao dịch hoặc bạn không có quyền xem',
+      });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: transaction });
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';

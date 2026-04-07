@@ -8,6 +8,8 @@ import {
   processPayment,
   createOrder,
   getMyTransactions,
+  getMyTransactionsAsOwner,
+  getTransactionById,
   cancelOrderByStore,
   adminGetTransactions,
   adminForceUpdateStatus,
@@ -27,8 +29,12 @@ router.post('/requests', verifyAuth, createRequest);
 router.put('/requests/:id', verifyAuth, updateOrDeleteRequest);
 
 // [GET] /api/transactions/me
-// (Xem lịch sử giao dịch của tôi)
+// (Xem lịch sử giao dịch của tôi — tư cách Người nhận/Người mua)
 router.get('/me', verifyAuth, getMyTransactions);
+
+// [GET] /api/transactions/as-owner
+// (Xem giao dịch của tôi — tư cách Người cho/Cửa hàng)
+router.get('/as-owner', verifyAuth, getMyTransactionsAsOwner);
 
 // [POST] /api/transactions/orders
 // (TRX_F07: Đặt mua túi mù B2C)
@@ -70,5 +76,10 @@ router.patch(
   verifyAdmin,
   adminForceUpdateStatus
 );
+
+// [GET] /api/transactions/:id
+// (TRX_F14: Xem chi tiết giao dịch — cả Receiver lẫn Donor đều dùng được)
+// PHẢI đặt CUỐI CÙNG — sau tất cả các route tĩnh để tránh /admin, /me, /as-owner bị bắt nhầm
+router.get('/:id', verifyAuth, getTransactionById);
 
 export default router;
