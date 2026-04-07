@@ -552,7 +552,7 @@ describe('createOrder', () => {
 
   it('sets post to OUT_OF_STOCK when remaining becomes 0', async () => {
     const req = createAuthRequest({
-      body: { postId: POST_ID, quantity: 3, paymentMethod: 'ZALOPAY' },
+      body: { postId: POST_ID, quantity: 3, paymentMethod: 'MOMO' },
     });
     const res = createResponse();
 

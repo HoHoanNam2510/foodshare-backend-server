@@ -5,7 +5,10 @@ import mongoose from 'mongoose';
 
 import Transaction from '@/models/Transaction';
 import Post from '@/models/Post';
+import EscrowLedger from '@/models/EscrowLedger';
 import { awardTransactionPoints } from '@/services/greenPointService';
+import { getPaymentService } from '@/services/payment';
+import logger from '@/utils/logger';
 
 // --- TRX_F01: TẠO YÊU CẦU XIN ĐỒ (P2P) ---
 export const createRequest = async (
@@ -291,6 +294,7 @@ export const createOrder = async (
 
     // Tạo đơn hàng, set hạn thanh toán 10 phút (TRX_F09)
     const expiredAt = new Date(Date.now() + 10 * 60 * 1000);
+    const totalAmount = post.price * quantity;
 
     const newOrder = await Transaction.create({
       postId,
@@ -298,6 +302,7 @@ export const createOrder = async (
       ownerId: post.ownerId,
       type: 'ORDER',
       quantity,
+      totalAmount,
       status: 'PENDING',
       paymentMethod,
       expiredAt,
@@ -428,6 +433,19 @@ export const scanQrAndComplete = async (
     transaction.status = 'COMPLETED';
     await transaction.save();
 
+    // Giải ngân escrow nếu là đơn B2C
+    if (transaction.type === 'ORDER') {
+      const escrow = await EscrowLedger.findOne({
+        transactionId: transaction._id,
+        status: 'HOLDING',
+      });
+      if (escrow) {
+        escrow.status = 'DISBURSED';
+        escrow.disbursedAt = new Date();
+        await escrow.save();
+      }
+    }
+
     // Cập nhật Post: ẩn bài đăng nếu hết hàng (Giai đoạn 5 — P2P_TRANSACTION.md)
     const post = await Post.findById(transaction.postId);
     if (post && post.remainingQuantity === 0) {
@@ -528,8 +546,39 @@ export const cancelOrderByStore = async (
       return;
     }
 
-    // Hủy đơn
-    transaction.status = 'CANCELLED';
+    // Hoàn tiền qua cổng thanh toán
+    const escrow = await EscrowLedger.findOne({
+      transactionId: transaction._id,
+      status: 'HOLDING',
+    });
+
+    if (escrow && transaction.paymentTransId) {
+      try {
+        const gateway = transaction.paymentMethod as 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
+        const paymentService = getPaymentService(gateway);
+        await paymentService.refund({
+          partnerTransId: transaction.paymentTransId,
+          transactionId: (transaction._id as mongoose.Types.ObjectId).toString(),
+          amount: transaction.totalAmount ?? 0,
+          reason: 'Store hủy đơn hàng',
+        });
+
+        escrow.status = 'REFUNDED';
+        escrow.refundedAt = new Date();
+        escrow.refundReason = 'Store hủy đơn hàng';
+        await escrow.save();
+      } catch (refundErr) {
+        logger.error('[cancelOrderByStore] Refund failed', {
+          transactionId: transaction._id,
+          error: refundErr instanceof Error ? refundErr.message : refundErr,
+        });
+      }
+    }
+
+    // Hủy đơn → REFUNDED (vì đã hoàn tiền)
+    transaction.status = 'REFUNDED';
+    transaction.refundReason = 'Store hủy đơn hàng';
+    transaction.refundedAt = new Date();
     await transaction.save();
 
     // Khôi phục tồn kho cho Post
@@ -541,8 +590,6 @@ export const cancelOrderByStore = async (
       }
       await post.save();
     }
-
-    // TODO: Kích hoạt tiến trình Refund (hoàn tiền từ Escrow về ví người mua)
 
     res.status(200).json({
       success: true,
@@ -640,6 +687,211 @@ export const adminGetTransactions = async (
   }
 };
 
+// --- ADM: ADMIN HOÀN TIỀN GIAO DỊCH ---
+export const adminRefundTransaction = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const transactionId = req.params.id;
+    const { reason } = req.body;
+
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+      return;
+    }
+
+    if (!['ESCROWED', 'DISPUTED'].includes(transaction.status)) {
+      res.status(400).json({
+        success: false,
+        message: 'Chỉ có thể hoàn tiền giao dịch đang ESCROWED hoặc DISPUTED',
+      });
+      return;
+    }
+
+    // Hoàn tiền qua cổng thanh toán
+    const escrow = await EscrowLedger.findOne({
+      transactionId: transaction._id,
+      status: 'HOLDING',
+    });
+
+    if (escrow && transaction.paymentTransId) {
+      try {
+        const gateway = transaction.paymentMethod as 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
+        const paymentService = getPaymentService(gateway);
+        await paymentService.refund({
+          partnerTransId: transaction.paymentTransId,
+          transactionId: (transaction._id as mongoose.Types.ObjectId).toString(),
+          amount: transaction.totalAmount ?? 0,
+          reason: reason || 'Admin hoàn tiền',
+        });
+
+        escrow.status = 'REFUNDED';
+        escrow.refundedAt = new Date();
+        escrow.refundReason = reason || 'Admin hoàn tiền';
+        await escrow.save();
+      } catch (refundErr) {
+        logger.error('[adminRefundTransaction] Refund gateway failed', {
+          transactionId,
+          error: refundErr instanceof Error ? refundErr.message : refundErr,
+        });
+      }
+    }
+
+    transaction.status = 'REFUNDED';
+    transaction.refundReason = reason || 'Admin hoàn tiền';
+    transaction.refundedAt = new Date();
+    await transaction.save();
+
+    // Khôi phục tồn kho
+    const post = await Post.findById(transaction.postId);
+    if (post) {
+      post.remainingQuantity += transaction.quantity;
+      if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
+      await post.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã hoàn tiền giao dịch thành công',
+      data: transaction,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- ADM: ADMIN GIẢI NGÂN ESCROW ---
+export const adminDisburseEscrow = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const transactionId = req.params.id;
+
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+      return;
+    }
+
+    if (!['ESCROWED', 'DISPUTED'].includes(transaction.status)) {
+      res.status(400).json({
+        success: false,
+        message: 'Chỉ có thể giải ngân giao dịch đang ESCROWED hoặc DISPUTED',
+      });
+      return;
+    }
+
+    const escrow = await EscrowLedger.findOne({
+      transactionId: transaction._id,
+      status: 'HOLDING',
+    });
+
+    if (!escrow) {
+      res.status(404).json({ success: false, message: 'Không tìm thấy escrow cho giao dịch này' });
+      return;
+    }
+
+    escrow.status = 'DISBURSED';
+    escrow.disbursedAt = new Date();
+    await escrow.save();
+
+    transaction.status = 'COMPLETED';
+    await transaction.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã giải ngân thành công',
+      data: { transaction, escrow },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- ADM: ADMIN XEM DANH SÁCH ESCROW ---
+export const adminGetEscrows = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { status, page = '1', limit = '20' } = req.query;
+
+    const filter: Record<string, string> = {};
+    if (typeof status === 'string' && status && status !== 'ALL') {
+      filter.status = status;
+    }
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [escrows, total] = await Promise.all([
+      EscrowLedger.find(filter)
+        .populate('storeId', 'fullName email avatar')
+        .populate('buyerId', 'fullName email avatar')
+        .populate('transactionId', 'status type paymentMethod')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      EscrowLedger.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: escrows,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- ADM: ADMIN XEM THỐNG KÊ ESCROW ---
+export const adminGetEscrowStats = async (
+  _req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const [holding, disbursed, refunded] = await Promise.all([
+      EscrowLedger.aggregate([
+        { $match: { status: 'HOLDING' } },
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]),
+      EscrowLedger.aggregate([
+        { $match: { status: 'DISBURSED' } },
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]),
+      EscrowLedger.aggregate([
+        { $match: { status: 'REFUNDED' } },
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        holding: { total: holding[0]?.total ?? 0, count: holding[0]?.count ?? 0 },
+        disbursed: { total: disbursed[0]?.total ?? 0, count: disbursed[0]?.count ?? 0 },
+        refunded: { total: refunded[0]?.total ?? 0, count: refunded[0]?.count ?? 0 },
+      },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
 // --- ADM_T02: ADMIN ÉP ĐỔI TRẠNG THÁI GIAO DỊCH ---
 export const adminForceUpdateStatus = async (
   req: Request,
@@ -656,6 +908,8 @@ export const adminForceUpdateStatus = async (
       'ESCROWED',
       'COMPLETED',
       'CANCELLED',
+      'REFUNDED',
+      'DISPUTED',
     ];
 
     if (!validStatuses.includes(status)) {
@@ -689,5 +943,154 @@ export const adminForceUpdateStatus = async (
     res
       .status(500)
       .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- BUYER KHIẾU NẠI GIAO DỊCH ---
+export const fileDispute = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const transactionId = req.params.id;
+    const userId = req.user?.id;
+    const { reason } = req.body;
+
+    if (!reason || typeof reason !== 'string' || reason.trim().length < 10) {
+      res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập lý do khiếu nại (ít nhất 10 ký tự)',
+      });
+      return;
+    }
+
+    const transaction = await Transaction.findOne({
+      _id: transactionId,
+      requesterId: userId,
+      type: 'ORDER',
+      status: 'ESCROWED',
+    });
+
+    if (!transaction) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đơn hàng hoặc đơn không ở trạng thái có thể khiếu nại',
+      });
+      return;
+    }
+
+    transaction.status = 'DISPUTED';
+    transaction.disputeReason = reason.trim();
+    await transaction.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã gửi khiếu nại. Admin sẽ xem xét và xử lý.',
+      data: transaction,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- ADM: ADMIN XỬ LÝ KHIẾU NẠI ---
+export const adminResolveDispute = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const transactionId = req.params.id;
+    const { resolution } = req.body; // 'REFUND' | 'DISBURSE'
+
+    if (!['REFUND', 'DISBURSE'].includes(resolution)) {
+      res.status(400).json({
+        success: false,
+        message: 'Resolution phải là REFUND hoặc DISBURSE',
+      });
+      return;
+    }
+
+    const transaction = await Transaction.findOne({
+      _id: transactionId,
+      status: 'DISPUTED',
+    });
+
+    if (!transaction) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy giao dịch đang khiếu nại',
+      });
+      return;
+    }
+
+    const escrow = await EscrowLedger.findOne({
+      transactionId: transaction._id,
+      status: 'HOLDING',
+    });
+
+    if (resolution === 'REFUND') {
+      // Hoàn tiền cho buyer
+      if (escrow && transaction.paymentTransId) {
+        try {
+          const gateway = transaction.paymentMethod as 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
+          const paymentService = getPaymentService(gateway);
+          await paymentService.refund({
+            partnerTransId: transaction.paymentTransId,
+            transactionId: (transaction._id as mongoose.Types.ObjectId).toString(),
+            amount: transaction.totalAmount ?? 0,
+            reason: 'Admin xử lý khiếu nại — hoàn tiền',
+          });
+
+          escrow.status = 'REFUNDED';
+          escrow.refundedAt = new Date();
+          escrow.refundReason = 'Admin xử lý khiếu nại — hoàn tiền';
+          await escrow.save();
+        } catch (refundErr) {
+          logger.error('[adminResolveDispute] Refund gateway failed', {
+            transactionId,
+            error: refundErr instanceof Error ? refundErr.message : refundErr,
+          });
+        }
+      }
+
+      transaction.status = 'REFUNDED';
+      transaction.refundReason = 'Admin xử lý khiếu nại — hoàn tiền';
+      transaction.refundedAt = new Date();
+      await transaction.save();
+
+      // Khôi phục tồn kho
+      const post = await Post.findById(transaction.postId);
+      if (post) {
+        post.remainingQuantity += transaction.quantity;
+        if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
+        await post.save();
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Đã hoàn tiền cho buyer',
+        data: transaction,
+      });
+    } else {
+      // Giải ngân cho store
+      if (escrow) {
+        escrow.status = 'DISBURSED';
+        escrow.disbursedAt = new Date();
+        await escrow.save();
+      }
+
+      transaction.status = 'COMPLETED';
+      await transaction.save();
+
+      res.status(200).json({
+        success: true,
+        message: 'Đã giải ngân cho store',
+        data: transaction,
+      });
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message: 'Lỗi server', error: message });
   }
 };

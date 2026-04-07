@@ -12,10 +12,18 @@ export interface ITransaction extends Document {
     | 'REJECTED'
     | 'ESCROWED'
     | 'COMPLETED'
-    | 'CANCELLED';
-  paymentMethod: 'FREE' | 'MOMO' | 'ZALOPAY';
+    | 'CANCELLED'
+    | 'REFUNDED'
+    | 'DISPUTED';
+  paymentMethod: 'FREE' | 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
+  paymentTransId?: string;
+  totalAmount?: number;
   verificationCode?: string;
   expiredAt?: Date;
+  pickupDeadline?: Date;
+  refundReason?: string;
+  refundedAt?: Date;
+  disputeReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,13 +51,15 @@ const TransactionSchema = new Schema<ITransaction>(
         'ESCROWED',
         'COMPLETED',
         'CANCELLED',
+        'REFUNDED',
+        'DISPUTED',
       ],
       default: 'PENDING',
     },
 
     paymentMethod: {
       type: String,
-      enum: ['FREE', 'MOMO', 'ZALOPAY'],
+      enum: ['FREE', 'MOMO' /* , 'ZALOPAY', 'VNPAY' // TODO: Re-enable when ready */],
       required: true,
       validate: {
         // Ràng buộc: Xin đồ (REQUEST) thì phải FREE, Mua (ORDER) thì không được FREE
@@ -63,10 +73,26 @@ const TransactionSchema = new Schema<ITransaction>(
       },
     },
 
+    // Mã giao dịch từ cổng thanh toán (MoMo transId) — TODO: Re-add ZaloPay/VNPay notes when ready
+    paymentTransId: { type: String },
+
+    // Tổng tiền thanh toán (price * quantity) — lưu snapshot tại thời điểm đặt hàng
+    totalAmount: { type: Number, min: 0 },
+
     // Mã xác minh QR — sinh khi transaction được ACCEPTED (P2P) hoặc ESCROWED (B2C); sparse để tránh lỗi unique khi null
     verificationCode: { type: String, unique: true, sparse: true },
 
     expiredAt: { type: Date },
+
+    // Hạn nhận hàng — sau thanh toán thành công (mặc định: closeHours của store hoặc 24h)
+    pickupDeadline: { type: Date },
+
+    // Thông tin hoàn tiền
+    refundReason: { type: String },
+    refundedAt: { type: Date },
+
+    // Thông tin khiếu nại
+    disputeReason: { type: String },
   },
   { timestamps: true }
 );

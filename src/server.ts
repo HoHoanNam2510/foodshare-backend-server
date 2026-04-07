@@ -16,7 +16,13 @@ import voucherRoutes from './routes/voucherRoutes';
 import greenPointRoutes from './routes/greenPointRoutes';
 import reviewRoutes from './routes/reviewRoutes';
 import uploadRoutes from './routes/uploadRoutes';
+import paymentRoutes from './routes/paymentRoutes';
 import logger from './utils/logger';
+import { registerPaymentService } from './services/payment';
+import { momoPaymentService } from './services/payment/momo.service';
+// import { zalopayPaymentService } from './services/payment/zalopay.service'; // TODO: Re-enable when ZaloPay is ready
+// import { vnpayPaymentService } from './services/payment/vnpay.service'; // TODO: Re-enable when VNPay is ready
+import { startScheduler } from './utils/scheduler';
 
 const app: Express = express();
 const httpServer = createServer(app);
@@ -62,6 +68,12 @@ app.use('/api/vouchers', voucherRoutes);
 app.use('/api/greenpoints', greenPointRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/payment', paymentRoutes);
+
+// Đăng ký các payment gateway
+registerPaymentService(momoPaymentService);
+// registerPaymentService(zalopayPaymentService); // TODO: Re-enable when ZaloPay is ready
+// registerPaymentService(vnpayPaymentService); // TODO: Re-enable when VNPay is ready
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
@@ -83,6 +95,9 @@ mongoose
   .connect(MONGODB_URI)
   .then(() => {
     logger.info('✅ Đã kết nối MongoDB thành công!');
+
+    // Khởi chạy cron jobs (pickup deadline, payment timeout)
+    startScheduler();
 
     // Chỉ khởi động server khi đã kết nối DB xong
     httpServer.listen(PORT, '0.0.0.0', () => {

@@ -11,8 +11,14 @@ import {
   getMyTransactionsAsOwner,
   getTransactionById,
   cancelOrderByStore,
+  fileDispute,
   adminGetTransactions,
   adminForceUpdateStatus,
+  adminRefundTransaction,
+  adminDisburseEscrow,
+  adminGetEscrows,
+  adminGetEscrowStats,
+  adminResolveDispute,
 } from '@/controllers/transactionController';
 import { verifyAuth, verifyAdmin } from '@/middlewares/authMiddleware';
 
@@ -62,6 +68,10 @@ router.patch('/:id/cancel', verifyAuth, cancelOrderByStore);
 // (TRX_F12, TRX_F13: Chủ cửa hàng quét mã QR để hoàn tất và nhận tiền)
 router.post('/scan', verifyAuth, scanQrAndComplete);
 
+// [PATCH] /api/transactions/:id/dispute
+// (Buyer khiếu nại đơn hàng B2C đang ESCROWED)
+router.patch('/:id/dispute', verifyAuth, fileDispute);
+
 // ===== NHÓM ADMIN =====
 
 // [GET] /api/transactions/admin
@@ -76,6 +86,26 @@ router.patch(
   verifyAdmin,
   adminForceUpdateStatus
 );
+
+// [POST] /api/transactions/admin/:id/refund
+// (Admin hoàn tiền giao dịch ESCROWED/DISPUTED)
+router.post('/admin/:id/refund', verifyAuth, verifyAdmin, adminRefundTransaction);
+
+// [POST] /api/transactions/admin/:id/disburse
+// (Admin giải ngân escrow cho store)
+router.post('/admin/:id/disburse', verifyAuth, verifyAdmin, adminDisburseEscrow);
+
+// [PATCH] /api/transactions/admin/:id/resolve-dispute
+// (Admin xử lý khiếu nại — REFUND hoặc DISBURSE)
+router.patch('/admin/:id/resolve-dispute', verifyAuth, verifyAdmin, adminResolveDispute);
+
+// [GET] /api/transactions/admin/escrows
+// (Admin xem danh sách escrow)
+router.get('/admin/escrows', verifyAuth, verifyAdmin, adminGetEscrows);
+
+// [GET] /api/transactions/admin/escrow-stats
+// (Admin xem thống kê escrow)
+router.get('/admin/escrow-stats', verifyAuth, verifyAdmin, adminGetEscrowStats);
 
 // [GET] /api/transactions/:id
 // (TRX_F14: Xem chi tiết giao dịch — cả Receiver lẫn Donor đều dùng được)

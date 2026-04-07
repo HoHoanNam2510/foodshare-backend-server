@@ -35,6 +35,16 @@ export const verifyEmailSchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'Mã xác minh phải gồm đúng 6 chữ số'),
 });
 
+export const paymentInfoSchema = z.object({
+  momoPhone: z.string().min(8, 'SĐT MoMo không hợp lệ').optional(),
+  // zalopayPhone: z.string().min(8, 'SĐT ZaloPay không hợp lệ').optional(), // TODO: Re-enable when ZaloPay is ready
+  bankName: z.string().optional(),
+  bankCode: z.string().optional(),
+  bankAccountNumber: z.string().optional(),
+  bankAccountName: z.string().optional(),
+  preferredDisbursement: z.enum(['MOMO', /* 'ZALOPAY', */ 'BANK']).optional(), // TODO: Re-add ZALOPAY when ready
+});
+
 export const registerStoreSchema = z.object({
   storeInfo: z.object({
     businessName: z.string().min(1, 'Tên cửa hàng là bắt buộc'),
@@ -46,6 +56,7 @@ export const registerStoreSchema = z.object({
   kycDocuments: z
     .array(z.string().min(1))
     .min(1, 'Cần ít nhất 1 tài liệu KYC'),
+  paymentInfo: paymentInfoSchema.optional(),
 });
 
 export const verifyCodeOnlySchema = z.object({
@@ -67,4 +78,5 @@ export const updateProfileSchema = z.object({
       businessAddress: z.string().optional(),
     })
     .optional(),
+  paymentInfo: paymentInfoSchema.optional(),
 });

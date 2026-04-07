@@ -641,6 +641,7 @@ export const updateProfile = async (
       defaultAddress,
       avatar,
       storeInfo,
+      paymentInfo,
     } = req.body;
 
     // Kiểm tra trùng số điện thoại
@@ -667,6 +668,7 @@ export const updateProfile = async (
       updateData.defaultAddress = defaultAddress;
     if (avatar !== undefined) updateData.avatar = avatar;
     if (storeInfo !== undefined) updateData.storeInfo = storeInfo;
+    if (paymentInfo !== undefined) updateData.paymentInfo = paymentInfo;
 
     // Tính toán lại isProfileCompleted
     const currentUser = await User.findById(userId);
@@ -792,11 +794,12 @@ export const registerStore = async (
       return;
     }
 
-    const { storeInfo, kycDocuments } = req.body;
+    const { storeInfo, kycDocuments, paymentInfo } = req.body;
 
     // Cập nhật thông tin Store và KYC; chuyển status → PENDING_KYC
     user.storeInfo = storeInfo;
     user.kycDocuments = kycDocuments;
+    if (paymentInfo) user.paymentInfo = paymentInfo;
     user.kycStatus = 'PENDING';
     user.status = 'PENDING_KYC';
     // Chưa chuyển role → vẫn là USER cho đến khi Admin duyệt
