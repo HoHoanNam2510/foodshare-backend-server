@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Post, { IPost } from '@/models/Post';
 import PostCreationPasscode from '@/models/PostCreationPasscode';
+import Transaction from '@/models/Transaction';
 import User from '@/models/User';
 import { deleteMultipleImagesByUrl } from '@/services/uploadService';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
@@ -224,7 +225,33 @@ export const createPost = async (
       return;
     }
 
-    // 2. Tạo bài đăng mới — status mặc định là PENDING_REVIEW
+    // 2. B2C bắt buộc phải có tài khoản MoMo hợp lệ để nhận giải ngân
+    if (type === 'B2C_MYSTERY_BAG') {
+      const owner = await User.findById(ownerId).select('paymentInfo role');
+      const momoPhone = owner?.paymentInfo?.momoPhone;
+
+      if (!momoPhone) {
+        res.status(400).json({
+          success: false,
+          message:
+            'Bạn cần cung cấp số điện thoại MoMo trong phần "Thông tin thanh toán" trước khi đăng túi mù.',
+        });
+        return;
+      }
+
+      // Validate định dạng SĐT Việt Nam: 10 chữ số, bắt đầu bằng 0
+      const vnPhoneRegex = /^0\d{9}$/;
+      if (!vnPhoneRegex.test(momoPhone)) {
+        res.status(400).json({
+          success: false,
+          message:
+            'Số điện thoại MoMo không hợp lệ. Vui lòng nhập đúng 10 chữ số (bắt đầu bằng 0).',
+        });
+        return;
+      }
+    }
+
+    // 3. Tạo bài đăng mới — status mặc định là PENDING_REVIEW
     const postData: Record<string, unknown> = {
       ownerId,
       type,
@@ -248,18 +275,18 @@ export const createPost = async (
 
     const newPost = await Post.create(postData);
 
-    // 3. Đánh dấu passcode đã sử dụng
+    // 4. Đánh dấu passcode đã sử dụng
     passcodeRecord.usedAt = now;
     await passcodeRecord.save();
 
-    // 4. Trả về ngay cho Frontend — không chờ AI
+    // 5. Trả về ngay cho Frontend — không chờ AI
     res.status(201).json({
       success: true,
       message: 'Tạo bài đăng thành công',
       data: newPost,
     });
 
-    // 5. Background Job — AI Moderation (tạm tắt — sẽ bật lại khi có quota Gemini)
+    // 6. Background Job — AI Moderation (tạm tắt — sẽ bật lại khi có quota Gemini)
     // runAIModerationJob(String(newPost._id)).catch((err) => {
     //   console.error('Background AI moderation failed:', err);
     // });
@@ -316,6 +343,28 @@ export const updatePost = async (
       return;
     }
 
+    // Chặn sửa trường nhạy cảm về số lượng/giá nếu có giao dịch đang hoạt động
+    const QUANTITY_PRICE_FIELDS = ['totalQuantity', 'remainingQuantity', 'price'];
+    const hasQuantityOrPriceChange = QUANTITY_PRICE_FIELDS.some(
+      (field) => field in updates
+    );
+
+    if (hasQuantityOrPriceChange) {
+      const activeTransactionCount = await Transaction.countDocuments({
+        postId: post._id,
+        status: { $in: ['PENDING', 'ACCEPTED', 'ESCROWED', 'DISPUTED'] },
+      });
+
+      if (activeTransactionCount > 0) {
+        res.status(400).json({
+          success: false,
+          message:
+            'Không thể sửa số lượng hoặc giá khi bài đăng còn giao dịch đang xử lý. Vui lòng chờ các giao dịch hoàn tất hoặc hủy trước.',
+        });
+        return;
+      }
+    }
+
     // Xóa ảnh cũ trên Cloudinary nếu images bị thay đổi
     if (updates.images && Array.isArray(updates.images)) {
       const removedUrls = post.images.filter(
@@ -370,7 +419,7 @@ export const deletePost = async (
     const postId = req.params.id;
     const ownerId = req.user?.id;
 
-    const post = await Post.findOneAndDelete({ _id: postId, ownerId });
+    const post = await Post.findOne({ _id: postId, ownerId });
 
     if (!post) {
       res.status(404).json({
@@ -379,6 +428,22 @@ export const deletePost = async (
       });
       return;
     }
+
+    // Chặn xóa nếu còn giao dịch đang hoạt động
+    const activeTransactionCount = await Transaction.countDocuments({
+      postId: post._id,
+      status: { $in: ['PENDING', 'ACCEPTED', 'ESCROWED', 'DISPUTED'] },
+    });
+
+    if (activeTransactionCount > 0) {
+      res.status(400).json({
+        success: false,
+        message: `Không thể xóa bài đăng vì còn ${activeTransactionCount} giao dịch đang xử lý. Vui lòng chờ hoàn tất hoặc hủy các giao dịch trước.`,
+      });
+      return;
+    }
+
+    await Post.deleteOne({ _id: postId });
 
     // Xóa tất cả ảnh của bài đăng trên Cloudinary (fire-and-forget)
     if (post.images && post.images.length > 0) {

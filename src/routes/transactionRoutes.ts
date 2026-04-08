@@ -19,6 +19,7 @@ import {
   adminGetEscrows,
   adminGetEscrowStats,
   adminResolveDispute,
+  devCompleteTransaction,
 } from '@/controllers/transactionController';
 import { verifyAuth, verifyAdmin } from '@/middlewares/authMiddleware';
 
@@ -106,6 +107,12 @@ router.get('/admin/escrows', verifyAuth, verifyAdmin, adminGetEscrows);
 // [GET] /api/transactions/admin/escrow-stats
 // (Admin xem thống kê escrow)
 router.get('/admin/escrow-stats', verifyAuth, verifyAdmin, adminGetEscrowStats);
+
+// ===== DEV ONLY =====
+
+// [POST] /api/transactions/dev/complete/:id
+// (Hoàn tất giao dịch không cần quét QR — chỉ NODE_ENV=development)
+router.post('/dev/complete/:id', verifyAuth, devCompleteTransaction);
 
 // [GET] /api/transactions/:id
 // (TRX_F14: Xem chi tiết giao dịch — cả Receiver lẫn Donor đều dùng được)

@@ -1094,3 +1094,78 @@ export const adminResolveDispute = async (
     res.status(500).json({ success: false, message: 'Lỗi server', error: message });
   }
 };
+
+// --- DEV ONLY: Hoàn tất giao dịch không cần quét QR (dùng khi test 1 mình) ---
+export const devCompleteTransaction = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    if (process.env.NODE_ENV !== 'development') {
+      res.status(403).json({
+        success: false,
+        message: 'Endpoint này chỉ khả dụng trong môi trường development',
+      });
+      return;
+    }
+
+    const transactionId = req.params.id;
+
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+      return;
+    }
+
+    // Cho phép complete từ ACCEPTED (P2P) hoặc ESCROWED (B2C)
+    if (!['ACCEPTED', 'ESCROWED'].includes(transaction.status)) {
+      res.status(400).json({
+        success: false,
+        message: `Giao dịch đang ở trạng thái ${transaction.status}, không thể hoàn tất. Cần ACCEPTED (P2P) hoặc ESCROWED (B2C).`,
+      });
+      return;
+    }
+
+    transaction.status = 'COMPLETED';
+    await transaction.save();
+
+    // Giải ngân escrow nếu là đơn B2C
+    if (transaction.type === 'ORDER') {
+      const escrow = await EscrowLedger.findOne({
+        transactionId: transaction._id,
+        status: 'HOLDING',
+      });
+      if (escrow) {
+        escrow.status = 'DISBURSED';
+        escrow.disbursedAt = new Date();
+        await escrow.save();
+      }
+    }
+
+    // Cập nhật Post nếu hết hàng
+    const post = await Post.findById(transaction.postId);
+    if (post && post.remainingQuantity === 0) {
+      post.status = 'HIDDEN';
+      await post.save();
+    }
+
+    // Cộng điểm GreenPoint
+    await awardTransactionPoints(
+      (transaction._id as mongoose.Types.ObjectId).toString(),
+      transaction.type as 'REQUEST' | 'ORDER',
+      transaction.requesterId.toString(),
+      transaction.ownerId.toString()
+    );
+
+    logger.info('[DEV] Transaction completed without QR scan', { transactionId });
+
+    res.status(200).json({
+      success: true,
+      message: '[DEV] Giao dịch đã hoàn tất thành công (bỏ qua quét QR)',
+      data: transaction,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
