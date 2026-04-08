@@ -17,6 +17,7 @@ import greenPointRoutes from './routes/greenPointRoutes';
 import reviewRoutes from './routes/reviewRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 import paymentRoutes from './routes/paymentRoutes';
+import dashboardRoutes from './routes/dashboardRoutes';
 import logger from './utils/logger';
 import { registerPaymentService } from './services/payment';
 import { momoPaymentService } from './services/payment/momo.service';
@@ -69,6 +70,7 @@ app.use('/api/greenpoints', greenPointRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Đăng ký các payment gateway
 registerPaymentService(momoPaymentService);
