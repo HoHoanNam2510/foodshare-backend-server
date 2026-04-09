@@ -116,11 +116,29 @@ mongoose
     process.exit(1);
   });
 
-// Lắng nghe các kết nối Socket.io (Chat Realtime sau này viết ở đây)
+// Lắng nghe các kết nối Socket.io (Chat Realtime)
 io.on('connection', (socket) => {
-  logger.info(`🔌 Một người dùng vừa kết nối Socket: ${socket.id}`);
+  logger.info(`🔌 Socket kết nối: ${socket.id}`);
+
+  // Client tham gia phòng chat
+  socket.on('join-room', (conversationId: string) => {
+    socket.join(conversationId);
+    logger.info(`Socket ${socket.id} đã vào phòng: ${conversationId}`);
+  });
+
+  // Client rời phòng chat
+  socket.on('leave-room', (conversationId: string) => {
+    socket.leave(conversationId);
+    logger.info(`Socket ${socket.id} đã rời phòng: ${conversationId}`);
+  });
+
+  // Client gửi tin nhắn (sau khi đã lưu vào DB qua REST API)
+  // Server chỉ broadcast lại cho tất cả client trong phòng
+  socket.on('client-message', (data: { conversationId: string; message: unknown }) => {
+    io.to(data.conversationId).emit('new-message', data.message);
+  });
 
   socket.on('disconnect', () => {
-    logger.info(`❌ Người dùng ${socket.id} đã ngắt kết nối`);
+    logger.info(`❌ Socket ngắt kết nối: ${socket.id}`);
   });
 });
