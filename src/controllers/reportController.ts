@@ -3,6 +3,8 @@ import { Request, Response } from 'express';
 import {
   ReportServiceError,
   createReport as createReportService,
+  updateReport as updateReportService,
+  withdrawReport as withdrawReportService,
   getMyReports as getMyReportsService,
   adminGetReports as adminGetReportsService,
   adminGetReportDetail as adminGetReportDetailService,
@@ -94,6 +96,65 @@ export const getMyReports = async (
     res.status(200).json({
       success: true,
       data: reports,
+    });
+  } catch (error) {
+    handleReportError(error, res);
+  }
+};
+
+/**
+ * [PUT] /api/reports/:id
+ * Chỉnh sửa báo cáo — chỉ được khi status PENDING và người gọi là reporter.
+ */
+export const updateReport = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const reporterId = req.user?.id;
+    if (!reporterId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập để thực hiện thao tác này' });
+      return;
+    }
+
+    const reportId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { reason, description, images } = req.body;
+
+    const report = await updateReportService(reportId, reporterId, { reason, description, images });
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật báo cáo thành công',
+      data: report,
+    });
+  } catch (error) {
+    handleReportError(error, res);
+  }
+};
+
+/**
+ * [DELETE] /api/reports/:id
+ * Rút lại báo cáo (soft-delete → WITHDRAWN) — chỉ được khi status PENDING và người gọi là reporter.
+ */
+export const withdrawReport = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const reporterId = req.user?.id;
+    if (!reporterId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập để thực hiện thao tác này' });
+      return;
+    }
+
+    const reportId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    const report = await withdrawReportService(reportId, reporterId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã rút lại báo cáo',
+      data: report,
     });
   } catch (error) {
     handleReportError(error, res);

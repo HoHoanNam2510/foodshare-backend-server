@@ -26,6 +26,27 @@ export const createReportSchema = z.object({
 
 export type CreateReportBody = z.infer<typeof createReportSchema>;
 
+export const updateReportSchema = z.object({
+  reason: z
+    .enum(
+      ['FOOD_SAFETY', 'SCAM', 'INAPPROPRIATE_CONTENT', 'NO_SHOW', 'OTHER'],
+      {
+        errorMap: () => ({
+          message:
+            'reason phải là FOOD_SAFETY, SCAM, INAPPROPRIATE_CONTENT, NO_SHOW hoặc OTHER',
+        }),
+      }
+    )
+    .optional(),
+  description: z.string().min(10, 'Mô tả tối thiểu 10 ký tự').optional(),
+  images: z
+    .array(z.string().min(1))
+    .min(1, 'Cần ít nhất 1 ảnh bằng chứng')
+    .optional(),
+});
+
+export type UpdateReportBody = z.infer<typeof updateReportSchema>;
+
 // =============================================
 // II. VALIDATION CHO ADMIN
 // =============================================

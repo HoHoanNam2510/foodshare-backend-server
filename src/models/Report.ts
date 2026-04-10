@@ -7,7 +7,7 @@ export type ReportReason =
   | 'INAPPROPRIATE_CONTENT'
   | 'NO_SHOW'
   | 'OTHER';
-export type ReportStatus = 'PENDING' | 'RESOLVED' | 'DISMISSED';
+export type ReportStatus = 'PENDING' | 'RESOLVED' | 'DISMISSED' | 'WITHDRAWN';
 export type ReportAction =
   | 'NONE'
   | 'POST_HIDDEN'
@@ -73,7 +73,7 @@ const ReportSchema = new Schema<IReport>(
     ],
     status: {
       type: String,
-      enum: ['PENDING', 'RESOLVED', 'DISMISSED'],
+      enum: ['PENDING', 'RESOLVED', 'DISMISSED', 'WITHDRAWN'],
       default: 'PENDING',
     },
     actionTaken: {

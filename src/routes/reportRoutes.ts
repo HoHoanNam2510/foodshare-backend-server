@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import {
   createReport,
+  updateReport,
+  withdrawReport,
   getMyReports,
   adminGetReports,
   adminGetReportDetail,
@@ -10,6 +12,7 @@ import { verifyAuth, verifyAdmin } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validateBodyMiddleware';
 import {
   createReportSchema,
+  updateReportSchema,
   adminProcessReportSchema,
 } from '../validations/reportValidation';
 
@@ -49,5 +52,13 @@ router.post('/', verifyAuth, validateBody(createReportSchema), createReport);
 // [GET] /api/reports/me
 // (Xem lịch sử khiếu nại cá nhân)
 router.get('/me', verifyAuth, getMyReports);
+
+// [PUT] /api/reports/:id
+// (Chỉnh sửa báo cáo — chỉ khi PENDING, chỉ reporter của mình)
+router.put('/:id', verifyAuth, validateBody(updateReportSchema), updateReport);
+
+// [DELETE] /api/reports/:id
+// (Rút lại báo cáo — soft-delete sang WITHDRAWN, chỉ khi PENDING, chỉ reporter của mình)
+router.delete('/:id', verifyAuth, withdrawReport);
 
 export default router;

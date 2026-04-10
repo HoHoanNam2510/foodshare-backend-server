@@ -10,6 +10,7 @@ import Post from '@/models/Post';
 import User from '@/models/User';
 import Transaction from '@/models/Transaction';
 import Review from '@/models/Review';
+import Notification from '@/models/Notification';
 import { applyPenaltyPoints } from '@/services/greenPointService';
 import { recalculateAverageRating } from '@/services/reviewService';
 
@@ -78,6 +79,25 @@ export async function createReport(
     }
   }
 
+  // Chống spam: mỗi user chỉ được gửi 1 báo cáo cho mỗi thực thể.
+  // Nếu báo cáo trước đó bị DISMISSED, cho phép gửi lại.
+  const existingReport = await Report.findOne({
+    reporterId,
+    targetType,
+    targetId,
+    status: { $in: ['PENDING', 'RESOLVED'] },
+  });
+  if (existingReport) {
+    const statusLabel =
+      existingReport.status === 'PENDING'
+        ? 'đang chờ xử lý'
+        : 'đã được giải quyết';
+    throw new ReportServiceError(
+      `Bạn đã gửi báo cáo cho thực thể này và báo cáo ${statusLabel}. Không thể gửi thêm.`,
+      409
+    );
+  }
+
   const report = await Report.create({
     reporterId,
     targetType,
@@ -89,6 +109,77 @@ export async function createReport(
     actionTaken: 'NONE',
   });
 
+  return report;
+}
+
+interface UpdateReportInput {
+  reason?: ReportReason;
+  description?: string;
+  images?: string[];
+}
+
+/**
+ * Chỉnh sửa báo cáo — chỉ cho phép khi status là PENDING và người gọi là reporter.
+ */
+export async function updateReport(
+  reportId: string,
+  reporterId: string,
+  data: UpdateReportInput
+): Promise<IReport> {
+  if (!mongoose.Types.ObjectId.isValid(reportId)) {
+    throw new ReportServiceError('Report ID không hợp lệ', 400);
+  }
+
+  const report = await Report.findById(reportId);
+  if (!report) {
+    throw new ReportServiceError('Không tìm thấy báo cáo', 404);
+  }
+  if (report.reporterId.toString() !== reporterId) {
+    throw new ReportServiceError('Bạn không có quyền chỉnh sửa báo cáo này', 403);
+  }
+  if (report.status !== 'PENDING') {
+    throw new ReportServiceError(
+      'Chỉ có thể chỉnh sửa báo cáo đang ở trạng thái PENDING',
+      400
+    );
+  }
+
+  if (data.reason !== undefined) report.reason = data.reason;
+  if (data.description !== undefined) report.description = data.description;
+  if (data.images !== undefined) report.images = data.images;
+
+  await report.save();
+  return report;
+}
+
+/**
+ * Rút lại (soft-delete) báo cáo — chỉ cho phép khi status là PENDING và người gọi là reporter.
+ * Dùng trạng thái WITHDRAWN thay vì xóa cứng để Admin vẫn có thể tra cứu lịch sử.
+ */
+export async function withdrawReport(
+  reportId: string,
+  reporterId: string
+): Promise<IReport> {
+  if (!mongoose.Types.ObjectId.isValid(reportId)) {
+    throw new ReportServiceError('Report ID không hợp lệ', 400);
+  }
+
+  const report = await Report.findById(reportId);
+  if (!report) {
+    throw new ReportServiceError('Không tìm thấy báo cáo', 404);
+  }
+  if (report.reporterId.toString() !== reporterId) {
+    throw new ReportServiceError('Bạn không có quyền rút lại báo cáo này', 403);
+  }
+  if (report.status !== 'PENDING') {
+    throw new ReportServiceError(
+      'Chỉ có thể rút lại báo cáo đang ở trạng thái PENDING',
+      400
+    );
+  }
+
+  report.status = 'WITHDRAWN';
+  await report.save();
   return report;
 }
 
@@ -238,6 +329,20 @@ export async function adminProcessReport(
   report.resolvedAt = new Date();
 
   await report.save();
+
+  // Gửi thông báo cho người báo cáo khi bị bác bỏ (DISMISSED)
+  // để họ biết rằng họ có thể gửi lại với bằng chứng tốt hơn.
+  if (status === 'DISMISSED') {
+    await Notification.create({
+      userId: report.reporterId,
+      type: 'SYSTEM',
+      title: 'Báo cáo của bạn đã bị bác bỏ',
+      body: resolutionNote
+        ? `Báo cáo của bạn đã bị bác bỏ. Lý do: ${resolutionNote}. Bạn có thể gửi lại báo cáo với bằng chứng rõ ràng hơn.`
+        : 'Báo cáo của bạn đã bị bác bỏ. Bạn có thể gửi lại báo cáo với bằng chứng rõ ràng hơn.',
+      referenceId: report._id as mongoose.Types.ObjectId,
+    });
+  }
 
   return report;
 }
