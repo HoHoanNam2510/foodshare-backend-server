@@ -3,6 +3,7 @@ import {
   storeCreateVoucher,
   storeUpdateVoucher,
   storeToggleVoucher,
+  storeGetMyVouchers,
   getVoucherMarket,
   redeemVoucher,
   getMyVouchers,
@@ -49,6 +50,10 @@ router.post('/:id/redeem', verifyAuth, redeemVoucher);
 // =============================================
 // NHÓM STORE (yêu cầu đăng nhập — role STORE)
 // =============================================
+
+// [GET] /api/vouchers/store/mine
+// (Cửa hàng xem danh sách voucher do mình tạo)
+router.get('/store/mine', verifyAuth, storeGetMyVouchers);
 
 // [POST] /api/vouchers
 // (Cửa hàng tạo Voucher mới)

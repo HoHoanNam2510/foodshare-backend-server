@@ -199,6 +199,17 @@ export async function storeToggleVoucher(
   return voucher;
 }
 
+/**
+ * VOU_STORE_MINE: Cửa hàng lấy danh sách voucher do mình tạo.
+ */
+export async function storeGetMyVouchers(storeId: string): Promise<IVoucher[]> {
+  const vouchers = await Voucher.find({ creatorId: storeId })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return vouchers as IVoucher[];
+}
+
 // =============================================
 // II. NHÓM SERVICE DÀNH CHO USER
 // =============================================

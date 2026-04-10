@@ -5,6 +5,7 @@ import {
   storeCreateVoucher as storeCreateVoucherService,
   storeUpdateVoucher as storeUpdateVoucherService,
   storeToggleVoucher as storeToggleVoucherService,
+  storeGetMyVouchers as storeGetMyVouchersService,
   getVoucherMarket as getVoucherMarketService,
   redeemVoucher as redeemVoucherService,
   getMyVouchers as getMyVouchersService,
@@ -131,6 +132,35 @@ export const storeToggleVoucher = async (
         ? 'Đã mở lại voucher'
         : 'Đã ngừng phát hành voucher',
       data: voucher,
+    });
+  } catch (error) {
+    handleVoucherError(error, res);
+  }
+};
+
+/**
+ * [GET] /api/vouchers/store/mine
+ * VOU_STORE_MINE: Cửa hàng xem danh sách voucher do mình tạo.
+ */
+export const storeGetMyVouchers = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const storeId = req.user?.id;
+    if (!storeId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const vouchers = await storeGetMyVouchersService(storeId);
+
+    res.status(200).json({
+      success: true,
+      data: vouchers,
     });
   } catch (error) {
     handleVoucherError(error, res);
