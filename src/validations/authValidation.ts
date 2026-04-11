@@ -36,8 +36,6 @@ export const verifyEmailSchema = z.object({
 });
 
 export const paymentInfoSchema = z.object({
-  momoPhone: z.string().min(8, 'SĐT MoMo không hợp lệ').optional(),
-  // zalopayPhone: z.string().min(8, 'SĐT ZaloPay không hợp lệ').optional(), // TODO: Re-enable when ZaloPay is ready
   bankName: z.string().optional(),
   bankCode: z.string().optional(),
   bankAccountNumber: z.string().optional(),

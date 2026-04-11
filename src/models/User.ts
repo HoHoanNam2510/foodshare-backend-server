@@ -27,13 +27,10 @@ export interface IUser extends Document {
     businessAddress?: string;
   };
   paymentInfo?: {
-    momoPhone?: string;
-    // zalopayPhone?: string; // TODO: Re-enable when ZaloPay is ready
     bankName?: string;
     bankCode?: string;
     bankAccountNumber?: string;
     bankAccountName?: string;
-    preferredDisbursement?: 'MOMO' | /* 'ZALOPAY' | */ 'BANK'; // TODO: Re-add ZALOPAY when ready
   };
   greenPoints: number;
   averageRating: number;
@@ -107,17 +104,10 @@ const UserSchema = new Schema<IUser>(
     },
 
     paymentInfo: {
-      momoPhone: String,
-      // zalopayPhone: String, // TODO: Re-enable when ZaloPay is ready
       bankName: String,
       bankCode: String,
       bankAccountNumber: String,
       bankAccountName: String,
-      preferredDisbursement: {
-        type: String,
-        enum: ['MOMO', /* 'ZALOPAY', */ 'BANK'], // TODO: Re-add ZALOPAY when ready
-        default: 'BANK',
-      },
     },
 
     greenPoints: { type: Number, default: 0 },

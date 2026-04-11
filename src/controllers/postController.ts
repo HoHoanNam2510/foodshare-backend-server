@@ -225,27 +225,16 @@ export const createPost = async (
       return;
     }
 
-    // 2. B2C bắt buộc phải có tài khoản MoMo hợp lệ để nhận giải ngân
+    // 2. B2C bắt buộc phải có tài khoản ngân hàng để nhận giải ngân
     if (type === 'B2C_MYSTERY_BAG') {
       const owner = await User.findById(ownerId).select('paymentInfo role');
-      const momoPhone = owner?.paymentInfo?.momoPhone;
+      const bankAccountNumber = owner?.paymentInfo?.bankAccountNumber;
 
-      if (!momoPhone) {
+      if (!bankAccountNumber) {
         res.status(400).json({
           success: false,
           message:
-            'Bạn cần cung cấp số điện thoại MoMo trong phần "Thông tin thanh toán" trước khi đăng túi mù.',
-        });
-        return;
-      }
-
-      // Validate định dạng SĐT Việt Nam: 10 chữ số, bắt đầu bằng 0
-      const vnPhoneRegex = /^0\d{9}$/;
-      if (!vnPhoneRegex.test(momoPhone)) {
-        res.status(400).json({
-          success: false,
-          message:
-            'Số điện thoại MoMo không hợp lệ. Vui lòng nhập đúng 10 chữ số (bắt đầu bằng 0).',
+            'Bạn cần cung cấp thông tin tài khoản ngân hàng trong phần "Thông tin thanh toán" trước khi đăng túi mù.',
         });
         return;
       }

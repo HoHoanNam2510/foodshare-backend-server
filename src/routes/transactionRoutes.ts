@@ -5,8 +5,9 @@ import {
   getPostTransactions,
   respondToRequest,
   scanQrAndComplete,
-  processPayment,
+  getPaymentQR,
   createOrder,
+  adminConfirmPayment,
   getMyTransactions,
   getMyTransactionsAsOwner,
   getTransactionById,
@@ -47,9 +48,9 @@ router.get('/as-owner', verifyAuth, getMyTransactionsAsOwner);
 // (TRX_F07: Đặt mua túi mù B2C)
 router.post('/orders', verifyAuth, createOrder);
 
-// [POST] /api/transactions/orders/:id/pay
-// (TRX_F08, TRX_F09, TRX_F10, TRX_F11: Mô phỏng thanh toán, kiểm tra hết hạn, tạo mã QR)
-router.post('/orders/:id/pay', verifyAuth, processPayment);
+// [GET] /api/transactions/orders/:id/qr
+// (Lấy thông tin QR chuyển khoản VietQR cho đơn hàng PENDING)
+router.get('/orders/:id/qr', verifyAuth, getPaymentQR);
 
 // ===== NHÓM STORE / DONOR (Chủ Bài Đăng) =====
 
@@ -88,8 +89,12 @@ router.patch(
   adminForceUpdateStatus
 );
 
+// [POST] /api/transactions/admin/:id/confirm-payment
+// (Admin xác nhận đã nhận tiền chuyển khoản → ESCROWED)
+router.post('/admin/:id/confirm-payment', verifyAuth, verifyAdmin, adminConfirmPayment);
+
 // [POST] /api/transactions/admin/:id/refund
-// (Admin hoàn tiền giao dịch ESCROWED/DISPUTED)
+// (Admin hoàn tiền giao dịch ESCROWED/DISPUTED — xử lý chuyển khoản thủ công)
 router.post('/admin/:id/refund', verifyAuth, verifyAdmin, adminRefundTransaction);
 
 // [POST] /api/transactions/admin/:id/disburse

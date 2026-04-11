@@ -7,7 +7,7 @@ export interface IEscrowLedger extends Document {
   amount: number;
   platformFee: number;
   netAmount: number;
-  paymentMethod: 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
+  paymentMethod: 'BANK_TRANSFER';
   paymentTransId: string;
   status: 'HOLDING' | 'DISBURSED' | 'REFUNDED';
   disbursedAt?: Date;
@@ -34,7 +34,7 @@ const EscrowLedgerSchema = new Schema<IEscrowLedger>(
 
     paymentMethod: {
       type: String,
-      enum: ['MOMO' /* , 'ZALOPAY', 'VNPAY' // TODO: Re-enable when ready */],
+      enum: ['BANK_TRANSFER'],
       required: true,
     },
     paymentTransId: { type: String, required: true },

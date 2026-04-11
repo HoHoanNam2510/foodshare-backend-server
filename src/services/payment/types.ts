@@ -1,37 +1,15 @@
-/** Yêu cầu tạo thanh toán gửi đến cổng */
-export interface CreatePaymentParams {
-  transactionId: string;
+/** Tham số sinh mã QR VietQR */
+export interface GenerateQRParams {
   amount: number;
-  orderInfo: string;
-  returnUrl: string;
-  notifyUrl: string;
+  description: string; // Nội dung chuyển khoản (mã đơn hàng)
 }
 
-/** Kết quả tạo thanh toán — trả về URL redirect cho buyer */
-export interface CreatePaymentResult {
-  payUrl: string;
-  partnerTransId: string;
-}
-
-/** Yêu cầu hoàn tiền */
-export interface RefundParams {
-  partnerTransId: string;
-  transactionId: string;
+/** Kết quả sinh QR — trả về ảnh QR và thông tin tài khoản */
+export interface GenerateQRResult {
+  qrDataURL: string;     // Base64 data URL của ảnh QR (data:image/png;base64,...)
+  bankName: string;
+  bankAccountNumber: string;
+  bankAccountName: string;
   amount: number;
-  reason: string;
-}
-
-/** Kết quả hoàn tiền */
-export interface RefundResult {
-  success: boolean;
-  refundId: string;
-}
-
-/** Kết quả xác minh webhook — dữ liệu giao dịch đã xác thực */
-export interface WebhookVerifyResult {
-  isValid: boolean;
-  transactionId?: string;
-  partnerTransId?: string;
-  amount?: number;
-  resultCode?: number;
+  description: string;
 }

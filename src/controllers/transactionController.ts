@@ -7,7 +7,8 @@ import Transaction from '@/models/Transaction';
 import Post from '@/models/Post';
 import EscrowLedger from '@/models/EscrowLedger';
 import { awardTransactionPoints } from '@/services/greenPointService';
-import { getPaymentService } from '@/services/payment';
+import { generateVietQR } from '@/services/payment';
+import SystemConfig from '@/models/SystemConfig';
 import logger from '@/utils/logger';
 
 // --- TRX_F01: TẠO YÊU CẦU XIN ĐỒ (P2P) ---
@@ -113,8 +114,21 @@ export const updateOrDeleteRequest = async (
     }
 
     if (action === 'DELETE') {
-      await transaction.deleteOne(); // TRX_F03
-      res.status(200).json({ success: true, message: 'Đã hủy yêu cầu xin đồ' });
+      if (transaction.type === 'ORDER') {
+        // B2C PENDING: tồn kho đã bị trừ lúc đặt → cần hoàn lại trước khi hủy
+        const post = await Post.findById(transaction.postId);
+        if (post) {
+          post.remainingQuantity += transaction.quantity;
+          if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
+          await post.save();
+        }
+        transaction.status = 'CANCELLED';
+        await transaction.save();
+        res.status(200).json({ success: true, message: 'Đã hủy đơn hàng' });
+      } else {
+        await transaction.deleteOne(); // TRX_F03 — P2P: xóa hẳn
+        res.status(200).json({ success: true, message: 'Đã hủy yêu cầu xin đồ' });
+      }
       return;
     }
 
@@ -257,7 +271,7 @@ export const createOrder = async (
 ): Promise<void> => {
   try {
     const requesterId = req.user?.id;
-    const { postId, quantity, paymentMethod } = req.body;
+    const { postId, quantity } = req.body;
 
     const post = await Post.findById(postId);
     if (
@@ -279,21 +293,13 @@ export const createOrder = async (
       return;
     }
 
-    if (paymentMethod === 'FREE') {
-      res.status(400).json({
-        success: false,
-        message: 'Đơn hàng B2C bắt buộc thanh toán qua ví điện tử',
-      });
-      return;
-    }
-
     // Tạm trừ tồn kho ngay lúc đặt (TRX_F07)
     post.remainingQuantity -= quantity;
     if (post.remainingQuantity === 0) post.status = 'OUT_OF_STOCK';
     await post.save();
 
-    // Tạo đơn hàng, set hạn thanh toán 10 phút (TRX_F09)
-    const expiredAt = new Date(Date.now() + 10 * 60 * 1000);
+    // Tạo đơn hàng, set hạn thanh toán 30 phút
+    const expiredAt = new Date(Date.now() + 30 * 60 * 1000);
     const totalAmount = post.price * quantity;
 
     const newOrder = await Transaction.create({
@@ -304,14 +310,46 @@ export const createOrder = async (
       quantity,
       totalAmount,
       status: 'PENDING',
-      paymentMethod,
+      paymentMethod: 'BANK_TRANSFER',
       expiredAt,
     });
 
+    // Sinh thông tin QR chuyển khoản VietQR
+    const orderRef = (newOrder._id as mongoose.Types.ObjectId).toString().slice(-8).toUpperCase();
+    const description = `FS${orderRef}`;
+    let paymentQR: {
+      qrDataURL: string;
+      bankName: string;
+      bankAccountNumber: string;
+      bankAccountName: string;
+    } | null = null;
+
+    try {
+      paymentQR = await generateVietQR({ amount: totalAmount, description });
+    } catch (qrErr) {
+      // QR generation failed — client can still use bank info from separate endpoint
+      logger.warn('[createOrder] VietQR generation failed', {
+        error: qrErr instanceof Error ? qrErr.message : String(qrErr),
+        stack: qrErr instanceof Error ? qrErr.stack : undefined,
+      });
+    }
+
     res.status(201).json({
       success: true,
-      message: 'Đặt hàng thành công. Vui lòng thanh toán trong 10 phút.',
-      data: newOrder,
+      message: 'Đặt hàng thành công. Vui lòng chuyển khoản trong 30 phút.',
+      data: {
+        ...newOrder.toObject(),
+        paymentInfo: paymentQR
+          ? {
+              qrDataURL: paymentQR.qrDataURL,
+              bankName: paymentQR.bankName,
+              bankAccountNumber: paymentQR.bankAccountNumber,
+              bankAccountName: paymentQR.bankAccountName,
+              amount: totalAmount,
+              description,
+            }
+          : null,
+      },
     });
   } catch (error: unknown) {
     const message =
@@ -322,38 +360,30 @@ export const createOrder = async (
   }
 };
 
-// --- TRX_F08 & TRX_F11: MÔ PHỎNG THANH TOÁN THÀNH CÔNG & SINH QR ---
-export const processPayment = async (
+// --- TRX_F08 & TRX_F11: ADMIN XÁC NHẬN ĐÃ NHẬN TIỀN CHUYỂN KHOẢN & SINH QR ---
+export const adminConfirmPayment = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const transactionId = req.params.id;
-    const requesterId = req.user?.id;
 
     const transaction = await Transaction.findOne({
       _id: transactionId,
-      requesterId,
       type: 'ORDER',
+      status: 'PENDING',
     });
-    if (!transaction) {
-      res
-        .status(404)
-        .json({ success: false, message: 'Không tìm thấy đơn hàng' });
-      return;
-    }
 
-    if (transaction.status !== 'PENDING') {
-      res.status(400).json({
+    if (!transaction) {
+      res.status(404).json({
         success: false,
-        message: 'Đơn hàng đã được xử lý hoặc đã hủy',
+        message: 'Không tìm thấy đơn hàng đang chờ xác nhận thanh toán',
       });
       return;
     }
 
-    // Kiểm tra xem đơn đã quá hạn 10 phút chưa (Lazy Check cho TRX_F09)
+    // Kiểm tra đơn hàng có hết hạn chưa
     if (transaction.expiredAt && new Date() > transaction.expiredAt) {
-      // Hủy đơn và Khôi phục tồn kho (TRX_F10)
       transaction.status = 'CANCELLED';
       await transaction.save();
 
@@ -366,24 +396,101 @@ export const processPayment = async (
 
       res.status(400).json({
         success: false,
-        message: 'Đơn hàng đã hết hạn thanh toán và bị hủy tự động',
+        message: 'Đơn hàng đã hết hạn và bị hủy tự động',
       });
       return;
     }
 
-    // Nếu thanh toán hợp lệ -> Đổi trạng thái sang ESCROWED (TRX_F08)
+    // Sinh mã xác minh QR duy nhất cho đơn hàng
+    const rawQrString = `${transaction._id}-${transaction.requesterId}-${crypto.randomBytes(4).toString('hex')}`;
+
     transaction.status = 'ESCROWED';
-
-    // Sinh mã xác minh QR duy nhất cho đơn hàng (TRX_F11)
-    const rawQrString = `${transaction._id}-${requesterId}-${crypto.randomBytes(4).toString('hex')}`;
     transaction.verificationCode = rawQrString;
-
+    transaction.pickupDeadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await transaction.save();
+
+    // Tạo EscrowLedger entry
+    const PLATFORM_FEE_PERCENT = 0;
+    const amount = transaction.totalAmount ?? 0;
+    const platformFee = Math.round((amount * PLATFORM_FEE_PERCENT) / 100);
+
+    await EscrowLedger.create({
+      transactionId: transaction._id,
+      storeId: transaction.ownerId,
+      buyerId: transaction.requesterId,
+      amount,
+      platformFee,
+      netAmount: amount - platformFee,
+      paymentMethod: 'BANK_TRANSFER',
+      paymentTransId: rawQrString,
+      status: 'HOLDING',
+    });
+
+    logger.info('[adminConfirmPayment] Payment confirmed, ESCROWED', {
+      transactionId,
+    });
 
     res.status(200).json({
       success: true,
-      message: 'Thanh toán thành công. Tiền đã được tạm giữ.',
-      qrCode: rawQrString,
+      message: 'Đã xác nhận thanh toán. Đơn hàng chuyển sang trạng thái chờ giao.',
+      data: { verificationCode: rawQrString },
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- LẤY LẠI THÔNG TIN QR THANH TOÁN (dùng khi cần hiển thị lại) ---
+export const getPaymentQR = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const transactionId = req.params.id;
+    const requesterId = req.user?.id;
+
+    const transaction = await Transaction.findOne({
+      _id: transactionId,
+      requesterId,
+      type: 'ORDER',
+      status: 'PENDING',
+    });
+
+    if (!transaction) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đơn hàng đang chờ thanh toán',
+      });
+      return;
+    }
+
+    if (transaction.expiredAt && new Date() > transaction.expiredAt) {
+      res.status(400).json({
+        success: false,
+        message: 'Đơn hàng đã hết hạn thanh toán',
+      });
+      return;
+    }
+
+    const orderRef = (transaction._id as mongoose.Types.ObjectId).toString().slice(-8).toUpperCase();
+    const description = `FS${orderRef}`;
+
+    const paymentQR = await generateVietQR({
+      amount: transaction.totalAmount ?? 0,
+      description,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...paymentQR,
+        description,
+        expiredAt: transaction.expiredAt,
+      },
     });
   } catch (error: unknown) {
     const message =
@@ -552,27 +659,12 @@ export const cancelOrderByStore = async (
       status: 'HOLDING',
     });
 
-    if (escrow && transaction.paymentTransId) {
-      try {
-        const gateway = transaction.paymentMethod as 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
-        const paymentService = getPaymentService(gateway);
-        await paymentService.refund({
-          partnerTransId: transaction.paymentTransId,
-          transactionId: (transaction._id as mongoose.Types.ObjectId).toString(),
-          amount: transaction.totalAmount ?? 0,
-          reason: 'Store hủy đơn hàng',
-        });
-
-        escrow.status = 'REFUNDED';
-        escrow.refundedAt = new Date();
-        escrow.refundReason = 'Store hủy đơn hàng';
-        await escrow.save();
-      } catch (refundErr) {
-        logger.error('[cancelOrderByStore] Refund failed', {
-          transactionId: transaction._id,
-          error: refundErr instanceof Error ? refundErr.message : refundErr,
-        });
-      }
+    // Đánh dấu escrow cần hoàn tiền — admin xử lý chuyển khoản thủ công
+    if (escrow) {
+      escrow.status = 'REFUNDED';
+      escrow.refundedAt = new Date();
+      escrow.refundReason = 'Store hủy đơn hàng';
+      await escrow.save();
     }
 
     // Hủy đơn → REFUNDED (vì đã hoàn tiền)
@@ -716,27 +808,12 @@ export const adminRefundTransaction = async (
       status: 'HOLDING',
     });
 
-    if (escrow && transaction.paymentTransId) {
-      try {
-        const gateway = transaction.paymentMethod as 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
-        const paymentService = getPaymentService(gateway);
-        await paymentService.refund({
-          partnerTransId: transaction.paymentTransId,
-          transactionId: (transaction._id as mongoose.Types.ObjectId).toString(),
-          amount: transaction.totalAmount ?? 0,
-          reason: reason || 'Admin hoàn tiền',
-        });
-
-        escrow.status = 'REFUNDED';
-        escrow.refundedAt = new Date();
-        escrow.refundReason = reason || 'Admin hoàn tiền';
-        await escrow.save();
-      } catch (refundErr) {
-        logger.error('[adminRefundTransaction] Refund gateway failed', {
-          transactionId,
-          error: refundErr instanceof Error ? refundErr.message : refundErr,
-        });
-      }
+    // Đánh dấu escrow đã hoàn tiền — admin xử lý chuyển khoản thủ công
+    if (escrow) {
+      escrow.status = 'REFUNDED';
+      escrow.refundedAt = new Date();
+      escrow.refundReason = reason || 'Admin hoàn tiền';
+      await escrow.save();
     }
 
     transaction.status = 'REFUNDED';
@@ -1030,28 +1107,12 @@ export const adminResolveDispute = async (
     });
 
     if (resolution === 'REFUND') {
-      // Hoàn tiền cho buyer
-      if (escrow && transaction.paymentTransId) {
-        try {
-          const gateway = transaction.paymentMethod as 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
-          const paymentService = getPaymentService(gateway);
-          await paymentService.refund({
-            partnerTransId: transaction.paymentTransId,
-            transactionId: (transaction._id as mongoose.Types.ObjectId).toString(),
-            amount: transaction.totalAmount ?? 0,
-            reason: 'Admin xử lý khiếu nại — hoàn tiền',
-          });
-
-          escrow.status = 'REFUNDED';
-          escrow.refundedAt = new Date();
-          escrow.refundReason = 'Admin xử lý khiếu nại — hoàn tiền';
-          await escrow.save();
-        } catch (refundErr) {
-          logger.error('[adminResolveDispute] Refund gateway failed', {
-            transactionId,
-            error: refundErr instanceof Error ? refundErr.message : refundErr,
-          });
-        }
+      // Đánh dấu escrow đã hoàn tiền — admin xử lý chuyển khoản thủ công
+      if (escrow) {
+        escrow.status = 'REFUNDED';
+        escrow.refundedAt = new Date();
+        escrow.refundReason = 'Admin xử lý khiếu nại — hoàn tiền';
+        await escrow.save();
       }
 
       transaction.status = 'REFUNDED';

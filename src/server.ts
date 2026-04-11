@@ -18,11 +18,8 @@ import reviewRoutes from './routes/reviewRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
+import configRoutes from './routes/configRoutes';
 import logger from './utils/logger';
-import { registerPaymentService } from './services/payment';
-import { momoPaymentService } from './services/payment/momo.service';
-// import { zalopayPaymentService } from './services/payment/zalopay.service'; // TODO: Re-enable when ZaloPay is ready
-// import { vnpayPaymentService } from './services/payment/vnpay.service'; // TODO: Re-enable when VNPay is ready
 import { startScheduler } from './utils/scheduler';
 
 const app: Express = express();
@@ -71,11 +68,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-
-// Đăng ký các payment gateway
-registerPaymentService(momoPaymentService);
-// registerPaymentService(zalopayPaymentService); // TODO: Re-enable when ZaloPay is ready
-// registerPaymentService(vnpayPaymentService); // TODO: Re-enable when VNPay is ready
+app.use('/api/config', configRoutes);
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

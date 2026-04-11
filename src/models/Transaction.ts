@@ -15,7 +15,7 @@ export interface ITransaction extends Document {
     | 'CANCELLED'
     | 'REFUNDED'
     | 'DISPUTED';
-  paymentMethod: 'FREE' | 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
+  paymentMethod: 'FREE' | 'BANK_TRANSFER';
   paymentTransId?: string;
   totalAmount?: number;
   verificationCode?: string;
@@ -59,21 +59,21 @@ const TransactionSchema = new Schema<ITransaction>(
 
     paymentMethod: {
       type: String,
-      enum: ['FREE', 'MOMO' /* , 'ZALOPAY', 'VNPAY' // TODO: Re-enable when ready */],
+      enum: ['FREE', 'BANK_TRANSFER'],
       required: true,
       validate: {
-        // Ràng buộc: Xin đồ (REQUEST) thì phải FREE, Mua (ORDER) thì không được FREE
+        // Ràng buộc: Xin đồ (REQUEST) thì phải FREE, Mua (ORDER) thì phải BANK_TRANSFER
         validator: function (this: any, value: string) {
           if (this.type === 'REQUEST') return value === 'FREE';
-          if (this.type === 'ORDER') return value !== 'FREE';
+          if (this.type === 'ORDER') return value === 'BANK_TRANSFER';
           return true;
         },
         message:
-          'Phương thức thanh toán không khớp với loại giao dịch (REQUEST phải là FREE, ORDER phải dùng Ví điện tử).',
+          'Phương thức thanh toán không khớp với loại giao dịch (REQUEST phải là FREE, ORDER phải là BANK_TRANSFER).',
       },
     },
 
-    // Mã giao dịch từ cổng thanh toán (MoMo transId) — TODO: Re-add ZaloPay/VNPay notes when ready
+    // Nội dung chuyển khoản (order reference gửi trong nội dung CK)
     paymentTransId: { type: String },
 
     // Tổng tiền thanh toán (price * quantity) — lưu snapshot tại thời điểm đặt hàng

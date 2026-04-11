@@ -1,10 +1,8 @@
 import cron from 'node-cron';
-import mongoose from 'mongoose';
 
 import Transaction from '@/models/Transaction';
 import EscrowLedger from '@/models/EscrowLedger';
 import Post from '@/models/Post';
-import { getPaymentService } from '@/services/payment';
 import logger from '@/utils/logger';
 
 /**
@@ -37,27 +35,12 @@ async function checkPickupDeadlines(): Promise<void> {
         status: 'HOLDING',
       });
 
-      if (escrow && transaction.paymentTransId) {
-        try {
-          const gateway = transaction.paymentMethod as 'MOMO'; // TODO: Re-add | 'ZALOPAY' | 'VNPAY' when ready
-          const paymentService = getPaymentService(gateway);
-          await paymentService.refund({
-            partnerTransId: transaction.paymentTransId,
-            transactionId: (transaction._id as mongoose.Types.ObjectId).toString(),
-            amount: transaction.totalAmount ?? 0,
-            reason: 'Quá hạn nhận hàng — tự động hoàn tiền',
-          });
-
-          escrow.status = 'REFUNDED';
-          escrow.refundedAt = now;
-          escrow.refundReason = 'Quá hạn nhận hàng — tự động hoàn tiền';
-          await escrow.save();
-        } catch (refundErr) {
-          logger.error('[Scheduler] Refund gateway failed', {
-            transactionId: transaction._id,
-            error: refundErr instanceof Error ? refundErr.message : refundErr,
-          });
-        }
+      // Đánh dấu escrow cần hoàn tiền — admin xử lý chuyển khoản thủ công
+      if (escrow) {
+        escrow.status = 'REFUNDED';
+        escrow.refundedAt = now;
+        escrow.refundReason = 'Quá hạn nhận hàng — tự động hoàn tiền';
+        await escrow.save();
       }
 
       // Cập nhật trạng thái giao dịch
