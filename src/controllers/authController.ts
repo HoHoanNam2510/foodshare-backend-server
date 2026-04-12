@@ -731,6 +731,62 @@ export const updateProfile = async (
   }
 };
 
+// --- API CẬP NHẬT VỊ TRÍ NGƯỜI DÙNG (User tự cập nhật location) ---
+export const updateMyLocation = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const { longitude, latitude } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          location: {
+            type: 'Point',
+            coordinates: [longitude, latitude],
+          },
+        },
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy người dùng',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật vị trí thành công',
+      data: sanitizeUserData(user),
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Cập nhật vị trí thất bại';
+
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: errorMessage,
+    });
+  }
+};
+
 // --- API ĐĂNG KÝ CỬA HÀNG (Nâng cấp USER → STORE) ---
 export const registerStore = async (
   req: Request,

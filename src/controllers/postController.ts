@@ -568,6 +568,15 @@ export const searchMapPosts = async (
       return;
     }
 
+    const requestedDistance = parseInt(distance as string, 10);
+    if (isNaN(requestedDistance) || requestedDistance > 5000) {
+      res.status(400).json({
+        success: false,
+        message: 'Khoảng cách tìm kiếm tối đa là 5 km',
+      });
+      return;
+    }
+
     // Chỉ hiển thị bài đăng AVAILABLE trên bản đồ
     const filter: Record<string, unknown> = {
       status: 'AVAILABLE',
@@ -577,7 +586,7 @@ export const searchMapPosts = async (
             type: 'Point',
             coordinates: [parseFloat(lng as string), parseFloat(lat as string)],
           },
-          $maxDistance: parseInt(distance as string, 10),
+          $maxDistance: requestedDistance,
         },
       },
     };

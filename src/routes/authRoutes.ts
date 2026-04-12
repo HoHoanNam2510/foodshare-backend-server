@@ -10,6 +10,7 @@ import {
   logout,
   getMe,
   updateProfile,
+  updateMyLocation,
   registerStore,
 } from '../controllers/authController';
 import {
@@ -28,6 +29,7 @@ import {
   setPasswordSchema,
   verifyEmailSchema,
   updateProfileSchema,
+  updateLocationSchema,
   registerStoreSchema,
 } from '../validations/authValidation';
 
@@ -95,6 +97,14 @@ router.put(
   verifyAuth,
   validateBody(updateProfileSchema),
   updateProfile
+);
+
+// [PUT] /api/auth/me/location
+router.put(
+  '/me/location',
+  verifyAuth,
+  validateBody(updateLocationSchema),
+  updateMyLocation
 );
 
 export default router;

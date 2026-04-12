@@ -62,6 +62,17 @@ export const verifyCodeOnlySchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'Mã xác minh phải gồm đúng 6 chữ số'),
 });
 
+export const updateLocationSchema = z.object({
+  longitude: z
+    .number({ invalid_type_error: 'longitude phải là số' })
+    .min(106.36, 'Kinh độ ngoài phạm vi HCM')
+    .max(107.03, 'Kinh độ ngoài phạm vi HCM'),
+  latitude: z
+    .number({ invalid_type_error: 'latitude phải là số' })
+    .min(10.35, 'Vĩ độ ngoài phạm vi HCM')
+    .max(11.16, 'Vĩ độ ngoài phạm vi HCM'),
+});
+
 export const updateProfileSchema = z.object({
   fullName: z.string().min(1, 'Họ tên là bắt buộc').optional(),
   phoneNumber: z.string().min(8, 'Số điện thoại không hợp lệ').optional(),
