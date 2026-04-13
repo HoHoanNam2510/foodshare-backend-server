@@ -7,6 +7,7 @@ import Transaction from '@/models/Transaction';
 import Post from '@/models/Post';
 import EscrowLedger from '@/models/EscrowLedger';
 import { awardTransactionPoints } from '@/services/greenPointService';
+import { checkAndAwardBadges } from '@/services/badgeService';
 import { generateVietQR } from '@/services/payment';
 import SystemConfig from '@/models/SystemConfig';
 import logger from '@/utils/logger';
@@ -574,6 +575,18 @@ export const scanQrAndComplete = async (
         'Xác nhận giao nhận thành công! Tiền đã được giải ngân về ví của bạn.',
       data: transaction,
     });
+
+    // Trigger TRANSACTION_COMPLETED badge check cho cả 2 bên
+    try {
+      await checkAndAwardBadges(transaction.requesterId.toString(), 'TRANSACTION_COMPLETED');
+    } catch (err) {
+      console.warn('[TransactionController] badge check (requester) failed:', err);
+    }
+    try {
+      await checkAndAwardBadges(transaction.ownerId.toString(), 'TRANSACTION_COMPLETED');
+    } catch (err) {
+      console.warn('[TransactionController] badge check (owner) failed:', err);
+    }
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
@@ -1225,6 +1238,18 @@ export const devCompleteTransaction = async (
       message: '[DEV] Giao dịch đã hoàn tất thành công (bỏ qua quét QR)',
       data: transaction,
     });
+
+    // Trigger TRANSACTION_COMPLETED badge check cho cả 2 bên
+    try {
+      await checkAndAwardBadges(transaction.requesterId.toString(), 'TRANSACTION_COMPLETED');
+    } catch (err) {
+      console.warn('[TransactionController] badge check (requester) failed:', err);
+    }
+    try {
+      await checkAndAwardBadges(transaction.ownerId.toString(), 'TRANSACTION_COMPLETED');
+    } catch (err) {
+      console.warn('[TransactionController] badge check (owner) failed:', err);
+    }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Lỗi không xác định';
     res.status(500).json({ success: false, message: 'Lỗi server', error: message });

@@ -7,6 +7,7 @@ import User from '@/models/User';
 import { deleteMultipleImagesByUrl } from '@/services/uploadService';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
 import { runAIModerationJob, getAdminPostList } from '@/services/postService';
+import { checkAndAwardBadges } from '@/services/badgeService';
 
 const POST_PASSCODE_LENGTH = 6;
 const POST_PASSCODE_EXPIRE_MINUTES = 10;
@@ -275,7 +276,14 @@ export const createPost = async (
       data: newPost,
     });
 
-    // 6. Background Job — AI Moderation (tạm tắt — sẽ bật lại khi có quota Gemini)
+    // 6. Trigger badge check (POST_CREATED) — không block response
+    try {
+      await checkAndAwardBadges(ownerId, 'POST_CREATED');
+    } catch (err) {
+      console.warn('[PostController] badge check (POST_CREATED) failed:', err);
+    }
+
+    // 7. Background Job — AI Moderation (tạm tắt — sẽ bật lại khi có quota Gemini)
     // runAIModerationJob(String(newPost._id)).catch((err) => {
     //   console.error('Background AI moderation failed:', err);
     // });

@@ -8,6 +8,7 @@ import {
   deleteImageByUrl,
   deleteMultipleImagesByUrl,
 } from '@/services/uploadService';
+import { checkAndAwardBadges } from '@/services/badgeService';
 
 const CODE_LENGTH = 6;
 const CODE_EXPIRE_MINUTES = 10;
@@ -481,6 +482,15 @@ export const completeProfile = async (
       data: sanitizeUserData(user),
       onboardingRequired: !user.isProfileCompleted,
     });
+
+    // Trigger badge check sau khi hồ sơ hoàn thiện (không block response)
+    if (user.isProfileCompleted) {
+      try {
+        await checkAndAwardBadges(userId, 'PROFILE_COMPLETED');
+      } catch (err) {
+        console.warn('[AuthController] badge check (PROFILE_COMPLETED) failed:', err);
+      }
+    }
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : 'Hoàn thiện hồ sơ thất bại';
@@ -719,6 +729,15 @@ export const updateProfile = async (
       message: 'Cập nhật hồ sơ thành công',
       data: sanitizeUserData(user),
     });
+
+    // Trigger badge check nếu profile vừa được hoàn thiện sau update
+    if (user.isProfileCompleted) {
+      try {
+        await checkAndAwardBadges(userId, 'PROFILE_COMPLETED');
+      } catch (err) {
+        console.warn('[AuthController] badge check (PROFILE_COMPLETED) after updateProfile failed:', err);
+      }
+    }
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : 'Cập nhật hồ sơ thất bại';

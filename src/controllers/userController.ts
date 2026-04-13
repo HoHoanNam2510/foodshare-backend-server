@@ -9,6 +9,7 @@ import {
   deleteUser as deleteUserService,
   reviewKyc as reviewKycService,
 } from '@/services/userService';
+import { checkAndAwardBadges } from '@/services/badgeService';
 
 function getParamAsString(value: string | string[] | undefined): string {
   if (typeof value === 'string') {
@@ -124,6 +125,15 @@ export const reviewKyc = async (
       message,
       data: user,
     });
+
+    // Trigger KYC_APPROVED badge check nếu admin duyệt thành công
+    if (action === 'APPROVE') {
+      try {
+        await checkAndAwardBadges(id, 'KYC_APPROVED');
+      } catch (err) {
+        console.warn('[UserController] badge check (KYC_APPROVED) failed:', err);
+      }
+    }
   } catch (error: unknown) {
     handleUserError(error, res);
   }

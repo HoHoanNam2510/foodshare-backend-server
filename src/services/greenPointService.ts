@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 import User from '@/models/User';
 import PointLog, { IPointLog } from '@/models/PointLog';
+import { checkAndAwardBadges } from '@/services/badgeService';
 
 export class GreenPointServiceError extends Error {
   public statusCode: number;
@@ -84,6 +85,34 @@ export async function getPointHistory(
 // =============================================
 
 /**
+ * Internal: Cộng điểm thưởng cho user và ghi log.
+ * Sau khi cộng điểm, trigger GREENPOINTS_AWARDED để kiểm tra các badge mốc điểm.
+ *
+ * @param userId - ID user nhận điểm
+ * @param amount - Số điểm cộng (giá trị dương)
+ * @param reason - Lý do nhận điểm
+ * @param referenceId - ObjectId tham chiếu (badge, transaction, ...)
+ */
+export async function awardGreenPoints(
+  userId: string,
+  amount: number,
+  reason: string,
+  referenceId?: mongoose.Types.ObjectId
+): Promise<void> {
+  await Promise.all([
+    User.findByIdAndUpdate(userId, { $inc: { greenPoints: amount } }),
+    PointLog.create({ userId, amount, reason, referenceId }),
+  ]);
+
+  // Trigger badge check sau khi điểm được cập nhật vào DB
+  try {
+    await checkAndAwardBadges(userId, 'GREENPOINTS_AWARDED');
+  } catch (err) {
+    console.warn('[GreenPointService] badge check after awardGreenPoints failed:', err);
+  }
+}
+
+/**
  * Internal: Cộng điểm thưởng khi Transaction hoàn tất (COMPLETED).
  * Gọi từ transactionController sau khi scanQrAndComplete thành công.
  *
@@ -129,6 +158,18 @@ export async function awardTransactionPoints(
       referenceId: new mongoose.Types.ObjectId(transactionId),
     }),
   ]);
+
+  // Trigger GREENPOINTS_AWARDED badge check cho cả 2 user
+  try {
+    await checkAndAwardBadges(requesterId, 'GREENPOINTS_AWARDED');
+  } catch (err) {
+    console.warn('[GreenPointService] badge check (requester) failed:', err);
+  }
+  try {
+    await checkAndAwardBadges(ownerId, 'GREENPOINTS_AWARDED');
+  } catch (err) {
+    console.warn('[GreenPointService] badge check (owner) failed:', err);
+  }
 }
 
 /**

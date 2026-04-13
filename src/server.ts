@@ -19,6 +19,7 @@ import uploadRoutes from './routes/uploadRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import configRoutes from './routes/configRoutes';
+import badgeRoutes from './routes/badgeRoutes';
 import logger from './utils/logger';
 import { startScheduler } from './utils/scheduler';
 
@@ -69,6 +70,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/badges', badgeRoutes);
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

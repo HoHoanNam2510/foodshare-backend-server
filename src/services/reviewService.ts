@@ -4,6 +4,7 @@ import Review, { IReview } from '@/models/Review';
 import User from '@/models/User';
 import Transaction from '@/models/Transaction';
 import PointLog from '@/models/PointLog';
+import { checkAndAwardBadges } from '@/services/badgeService';
 
 // Hằng số
 const REVIEW_REWARD_POINTS = 2;
@@ -103,6 +104,11 @@ export async function createReview(
     ? transaction.ownerId.toString()
     : transaction.requesterId.toString();
 
+  // Ngăn chặn self-review (phòng ngừa edge case)
+  if (revieweeId === reviewerId) {
+    throw new ReviewServiceError('Bạn không thể tự đánh giá bản thân', 400);
+  }
+
   // Tạo bản ghi Review (unique index sẽ tự chặn nếu đã đánh giá)
   let review: IReview;
   try {
@@ -151,6 +157,13 @@ export async function createReview(
     referenceId: new mongoose.Types.ObjectId(transactionId),
   });
 
+  // Trigger REVIEW_RECEIVED badge check cho người bị đánh giá
+  try {
+    await checkAndAwardBadges(revieweeId, 'REVIEW_RECEIVED');
+  } catch (err) {
+    console.warn('[ReviewService] badge check (REVIEW_RECEIVED) failed:', err);
+  }
+
   return review;
 }
 
@@ -183,7 +196,11 @@ export async function getUserReviews(
     throw new ReviewServiceError('User ID không hợp lệ', 400);
   }
 
-  const filter: Record<string, unknown> = { revieweeId: userId };
+  // Loại trừ self-review để tránh người dùng thấy thông tin của chính mình
+  const filter: Record<string, unknown> = {
+    revieweeId: new mongoose.Types.ObjectId(userId),
+    reviewerId: { $ne: new mongoose.Types.ObjectId(userId) },
+  };
 
   // Lọc theo rating cụ thể nếu sort là số từ 1-5
   const ratingFilter = Number(sort);
