@@ -116,10 +116,26 @@ export const adminCreateBadgeHandler = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { code, name, description, imageUrl, targetRole, triggerEvent, pointReward, sortOrder } =
-      req.body;
+    const {
+      code,
+      name,
+      description,
+      imageUrl,
+      targetRole,
+      triggerEvent,
+      pointReward,
+      sortOrder,
+    } = req.body;
 
-    if (!code || !name || !description || !imageUrl || !targetRole || !triggerEvent || pointReward === undefined) {
+    if (
+      !code ||
+      !name ||
+      !description ||
+      !imageUrl ||
+      !targetRole ||
+      !triggerEvent ||
+      pointReward === undefined
+    ) {
       res.status(400).json({
         success: false,
         message: 'Vui lòng điền đầy đủ các trường bắt buộc',
@@ -157,14 +173,17 @@ export const adminUpdateBadgeHandler = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { badgeId } = req.params;
+    const badgeId = String(req.params.badgeId || '');
 
     if (!mongoose.Types.ObjectId.isValid(badgeId)) {
-      res.status(400).json({ success: false, message: 'Badge ID không hợp lệ' });
+      res
+        .status(400)
+        .json({ success: false, message: 'Badge ID không hợp lệ' });
       return;
     }
 
-    const { name, description, imageUrl, pointReward, sortOrder, isActive } = req.body;
+    const { name, description, imageUrl, pointReward, sortOrder, isActive } =
+      req.body;
 
     const badge = await adminUpdateBadge(badgeId, {
       name,
@@ -194,10 +213,12 @@ export const adminToggleBadgeHandler = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { badgeId } = req.params;
+    const badgeId = String(req.params.badgeId || '');
 
     if (!mongoose.Types.ObjectId.isValid(badgeId)) {
-      res.status(400).json({ success: false, message: 'Badge ID không hợp lệ' });
+      res
+        .status(400)
+        .json({ success: false, message: 'Badge ID không hợp lệ' });
       return;
     }
 

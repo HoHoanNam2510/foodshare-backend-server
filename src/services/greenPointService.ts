@@ -108,7 +108,10 @@ export async function awardGreenPoints(
   try {
     await checkAndAwardBadges(userId, 'GREENPOINTS_AWARDED');
   } catch (err) {
-    console.warn('[GreenPointService] badge check after awardGreenPoints failed:', err);
+    console.warn(
+      '[GreenPointService] badge check after awardGreenPoints failed:',
+      err
+    );
   }
 }
 
@@ -209,6 +212,51 @@ export async function applyPenaltyPoints(
 // III. NHÓM SERVICE DÀNH CHO ADMIN
 // =============================================
 
+export type LeaderboardPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type LeaderboardRole = 'USER' | 'STORE' | 'ALL';
+
+interface LeaderboardQuery {
+  period?: LeaderboardPeriod;
+  limit?: number;
+  role?: LeaderboardRole;
+  currentUserId?: string;
+}
+
+interface LeaderboardUserInfo {
+  _id: string;
+  fullName: string;
+  avatar?: string;
+  role: 'USER' | 'STORE' | 'ADMIN';
+}
+
+interface LeaderboardEntry {
+  rank: number;
+  user: LeaderboardUserInfo;
+  periodPoints: number;
+  totalPoints: number;
+}
+
+interface MyRankSummary {
+  rank: number | null;
+  periodPoints: number;
+  totalPoints: number;
+}
+
+interface LeaderboardResult {
+  period: LeaderboardPeriod;
+  startDate: Date;
+  endDate: Date;
+  leaderboard: LeaderboardEntry[];
+  myRank: MyRankSummary | null;
+}
+
+interface MyRankingSummaryResult {
+  daily: MyRankSummary;
+  weekly: MyRankSummary;
+  monthly: MyRankSummary;
+  yearly: MyRankSummary;
+}
+
 interface AdminPointLogsQuery {
   userId?: string;
   page?: number;
@@ -230,6 +278,235 @@ interface AdminPointLogsResult {
 /**
  * Admin xem toàn bộ lịch sử biến động Green Points, có thể lọc theo userId.
  */
+function getPeriodRange(period: LeaderboardPeriod): {
+  startDate: Date;
+  endDate: Date;
+} {
+  const now = new Date();
+  const startDate = new Date(now);
+  const endDate = new Date(now);
+
+  switch (period) {
+    case 'daily': {
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    }
+    case 'weekly': {
+      const day = now.getDay();
+      const diffToMonday = day === 0 ? 6 : day - 1;
+      startDate.setDate(now.getDate() - diffToMonday);
+      startDate.setHours(0, 0, 0, 0);
+
+      endDate.setDate(startDate.getDate() + 6);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    }
+    case 'monthly': {
+      startDate.setDate(1);
+      startDate.setHours(0, 0, 0, 0);
+
+      endDate.setMonth(now.getMonth() + 1, 0);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    }
+    case 'yearly': {
+      startDate.setMonth(0, 1);
+      startDate.setHours(0, 0, 0, 0);
+
+      endDate.setMonth(11, 31);
+      endDate.setHours(23, 59, 59, 999);
+      break;
+    }
+    default:
+      break;
+  }
+
+  return { startDate, endDate };
+}
+
+async function buildPeriodPointsMap(
+  period: LeaderboardPeriod,
+  role: LeaderboardRole
+): Promise<Map<string, number>> {
+  const { startDate, endDate } = getPeriodRange(period);
+
+  const matchStage: Record<string, unknown> = {
+    createdAt: { $gte: startDate, $lte: endDate },
+    amount: { $gt: 0 },
+  };
+
+  const pipeline: mongoose.PipelineStage[] = [
+    { $match: matchStage },
+    {
+      $group: {
+        _id: '$userId',
+        periodPoints: { $sum: '$amount' },
+      },
+    },
+  ];
+
+  if (role !== 'ALL') {
+    pipeline.push(
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'userInfo',
+        },
+      },
+      { $unwind: '$userInfo' },
+      { $match: { 'userInfo.role': role } }
+    );
+  }
+
+  const rows = await PointLog.aggregate(pipeline);
+
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    map.set(String(row._id), Number(row.periodPoints) || 0);
+  }
+  return map;
+}
+
+/**
+ * RWD_F02: Leaderboard theo kỳ (daily/weekly/monthly/yearly)
+ */
+export async function getLeaderboard(
+  query: LeaderboardQuery
+): Promise<LeaderboardResult> {
+  const period: LeaderboardPeriod = query.period || 'weekly';
+  const role: LeaderboardRole = query.role || 'ALL';
+  const limit = Math.min(Math.max(query.limit || 20, 1), 100);
+
+  const { startDate, endDate } = getPeriodRange(period);
+  const pointsMap = await buildPeriodPointsMap(period, role);
+  const userIds = Array.from(pointsMap.keys());
+
+  if (userIds.length === 0) {
+    return {
+      period,
+      startDate,
+      endDate,
+      leaderboard: [],
+      myRank: null,
+    };
+  }
+
+  const users = await User.find({ _id: { $in: userIds } })
+    .select('fullName avatar role greenPoints')
+    .lean();
+
+  const rows = users
+    .map((u) => {
+      const id = String(u._id);
+      return {
+        user: {
+          _id: id,
+          fullName: u.fullName,
+          avatar: u.avatar,
+          role: u.role,
+        } as LeaderboardUserInfo,
+        periodPoints: pointsMap.get(id) || 0,
+        totalPoints: u.greenPoints || 0,
+      };
+    })
+    .filter((r) => (role === 'ALL' ? true : r.user.role === role))
+    .sort((a, b) => b.periodPoints - a.periodPoints);
+
+  const ranked = rows.map((row, index) => ({
+    rank: index + 1,
+    ...row,
+  }));
+
+  const leaderboard = ranked.slice(0, limit);
+
+  let myRank: MyRankSummary | null = null;
+  if (query.currentUserId) {
+    const mine = ranked.find((r) => r.user._id === query.currentUserId);
+    if (mine) {
+      myRank = {
+        rank: mine.rank,
+        periodPoints: mine.periodPoints,
+        totalPoints: mine.totalPoints,
+      };
+    } else {
+      const me = await User.findById(query.currentUserId)
+        .select('greenPoints')
+        .lean();
+      if (
+        me &&
+        (role === 'ALL' ||
+          role ===
+            (await User.findById(query.currentUserId).select('role').lean())
+              ?.role)
+      ) {
+        myRank = {
+          rank: null,
+          periodPoints: 0,
+          totalPoints: me.greenPoints || 0,
+        };
+      }
+    }
+  }
+
+  return {
+    period,
+    startDate,
+    endDate,
+    leaderboard,
+    myRank,
+  };
+}
+
+/**
+ * RWD_F03: Tóm tắt thứ hạng của bản thân cho 4 kỳ
+ */
+export async function getMyRankingSummary(
+  userId: string
+): Promise<MyRankingSummaryResult> {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new GreenPointServiceError('User ID không hợp lệ', 400);
+  }
+
+  const me = await User.findById(userId).select('greenPoints').lean();
+  if (!me) {
+    throw new GreenPointServiceError('Không tìm thấy người dùng', 404);
+  }
+
+  const periods: LeaderboardPeriod[] = ['daily', 'weekly', 'monthly', 'yearly'];
+
+  const results = await Promise.all(
+    periods.map(async (period) => {
+      const pointsMap = await buildPeriodPointsMap(period, 'ALL');
+      const userIds = Array.from(pointsMap.keys());
+
+      const myPeriodPoints = pointsMap.get(userId) || 0;
+      const higherCount = Array.from(pointsMap.values()).filter(
+        (v) => v > myPeriodPoints
+      ).length;
+      const rank = userIds.length > 0 ? higherCount + 1 : null;
+
+      return [
+        period,
+        {
+          rank,
+          periodPoints: myPeriodPoints,
+          totalPoints: me.greenPoints || 0,
+        } as MyRankSummary,
+      ] as const;
+    })
+  );
+
+  return {
+    daily: results.find(([p]) => p === 'daily')![1],
+    weekly: results.find(([p]) => p === 'weekly')![1],
+    monthly: results.find(([p]) => p === 'monthly')![1],
+    yearly: results.find(([p]) => p === 'yearly')![1],
+  };
+}
+
 export async function adminGetAllPointLogs(
   query: AdminPointLogsQuery
 ): Promise<AdminPointLogsResult> {

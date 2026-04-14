@@ -2,8 +2,14 @@ import { Router } from 'express';
 import {
   getPointHistory,
   adminGetAllPointLogs,
+  getLeaderboard,
+  getMyRankingSummary,
 } from '@/controllers/greenPointController';
-import { verifyAuth, verifyAdmin } from '@/middlewares/authMiddleware';
+import {
+  verifyAuth,
+  verifyAdmin,
+  optionalAuth,
+} from '@/middlewares/authMiddleware';
 
 const router = Router();
 
@@ -14,6 +20,15 @@ const router = Router();
 // [GET] /api/greenpoints/history
 // (RWD_F01: Xem biến động số dư Green Points)
 router.get('/history', verifyAuth, getPointHistory);
+
+// [GET] /api/greenpoints/leaderboard
+// (RWD_F02: Xem bảng xếp hạng điểm xanh theo kỳ)
+// Public route, optionalAuth để nếu có token sẽ trả thêm myRank
+router.get('/leaderboard', optionalAuth, getLeaderboard);
+
+// [GET] /api/greenpoints/ranking-summary
+// (RWD_F03: Tóm tắt thứ hạng của tôi theo ngày/tuần/tháng/năm)
+router.get('/ranking-summary', verifyAuth, getMyRankingSummary);
 
 // =============================================
 // NHÓM ADMIN

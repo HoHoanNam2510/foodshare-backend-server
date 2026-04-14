@@ -4,6 +4,10 @@ import {
   GreenPointServiceError,
   getPointHistory as getPointHistoryService,
   adminGetAllPointLogs as adminGetAllPointLogsService,
+  getLeaderboard as getLeaderboardService,
+  getMyRankingSummary as getMyRankingSummaryService,
+  LeaderboardPeriod,
+  LeaderboardRole,
 } from '@/services/greenPointService';
 
 function handleGreenPointError(error: unknown, res: Response): void {
@@ -64,7 +68,95 @@ export const getPointHistory = async (
 };
 
 // =============================================
-// II. NHÓM HANDLER DÀNH CHO ADMIN
+// II. NHÓM HANDLER RANKING (PUBLIC/USER)
+// =============================================
+
+/**
+ * [GET] /api/greenpoints/leaderboard
+ * RWD_F02: Xem bảng xếp hạng theo kỳ (daily/weekly/monthly/yearly).
+ * Public endpoint: không bắt buộc đăng nhập.
+ */
+export const getLeaderboard = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const period =
+      (req.query.period as LeaderboardPeriod | undefined) || 'weekly';
+    const role = (req.query.role as LeaderboardRole | undefined) || 'ALL';
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+
+    const validPeriods: LeaderboardPeriod[] = [
+      'daily',
+      'weekly',
+      'monthly',
+      'yearly',
+    ];
+    const validRoles: LeaderboardRole[] = ['USER', 'STORE', 'ALL'];
+
+    if (!validPeriods.includes(period)) {
+      res.status(400).json({
+        success: false,
+        message: 'period phải là daily | weekly | monthly | yearly',
+      });
+      return;
+    }
+
+    if (!validRoles.includes(role)) {
+      res.status(400).json({
+        success: false,
+        message: 'role phải là USER | STORE | ALL',
+      });
+      return;
+    }
+
+    const result = await getLeaderboardService({
+      period,
+      role,
+      limit,
+      currentUserId: req.user?.id,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    handleGreenPointError(error, res);
+  }
+};
+
+/**
+ * [GET] /api/greenpoints/ranking-summary
+ * RWD_F03: Tóm tắt thứ hạng của bản thân trong 4 kỳ.
+ */
+export const getMyRankingSummary = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const result = await getMyRankingSummaryService(userId);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    handleGreenPointError(error, res);
+  }
+};
+
+// =============================================
+// III. NHÓM HANDLER DÀNH CHO ADMIN
 // =============================================
 
 /**

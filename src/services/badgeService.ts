@@ -22,9 +22,7 @@ const LAUNCH_CUTOFF = new Date('2026-07-01T00:00:00.000Z');
 export async function getBadgeCatalog(userId: string): Promise<{
   total: number;
   unlocked: number;
-  badges: Array<
-    IBadge & { isUnlocked: boolean; unlockedAt: Date | null }
-  >;
+  badges: Array<IBadge & { isUnlocked: boolean; unlockedAt: Date | null }>;
 }> {
   const [badges, userBadges] = await Promise.all([
     Badge.find({ isActive: true }).sort({ sortOrder: 1 }).lean(),
@@ -37,14 +35,16 @@ export async function getBadgeCatalog(userId: string): Promise<{
   }
 
   const enriched = badges.map((badge) => {
-    const badgeId = (badge._id as mongoose.Types.ObjectId).toString();
+    const badgeId = String(badge._id);
     const unlockedAt = unlockedMap.get(badgeId) ?? null;
     return {
       ...badge,
       isUnlocked: unlockedMap.has(badgeId),
       unlockedAt,
     };
-  }) as Array<IBadge & { isUnlocked: boolean; unlockedAt: Date | null }>;
+  }) as unknown as Array<
+    IBadge & { isUnlocked: boolean; unlockedAt: Date | null }
+  >;
 
   return {
     total: badges.length,
@@ -305,7 +305,8 @@ export async function adminGetAllBadges(query: {
 
   const enriched = badges.map((b) => ({
     ...b,
-    unlockedCount: countMap.get((b._id as mongoose.Types.ObjectId).toString()) ?? 0,
+    unlockedCount:
+      countMap.get((b._id as mongoose.Types.ObjectId).toString()) ?? 0,
   }));
 
   return {
@@ -408,7 +409,12 @@ export async function adminGetBadgeStats() {
         percentage: {
           $cond: [
             { $gt: [totalUsers, 0] },
-            { $round: [{ $multiply: [{ $divide: ['$count', totalUsers] }, 100] }, 1] },
+            {
+              $round: [
+                { $multiply: [{ $divide: ['$count', totalUsers] }, 100] },
+                1,
+              ],
+            },
             0,
           ],
         },
