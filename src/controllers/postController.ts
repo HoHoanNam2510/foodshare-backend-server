@@ -58,8 +58,9 @@ export const sendCreatePostPasscode = async (
       return;
     }
 
-    // Email phải được xác minh trước khi gửi passcode tạo bài
-    if (!user.isEmailVerified) {
+    // Email phải được xác minh trước khi gửi passcode tạo bài.
+    // Tài khoản GOOGLE luôn được coi là đã xác minh (Google đảm bảo điều này).
+    if (!user.isEmailVerified && user.authProvider !== 'GOOGLE') {
       res.status(403).json({
         success: false,
         message:

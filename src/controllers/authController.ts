@@ -388,6 +388,12 @@ export const googleLogin = async (
         shouldSave = true;
       }
 
+      // Google đã xác minh email — đảm bảo flag luôn đúng cho tài khoản cũ
+      if (!user.isEmailVerified) {
+        user.isEmailVerified = true;
+        shouldSave = true;
+      }
+
       const computedProfileCompleted = hasRequiredProfileInfo(user);
       if (user.isProfileCompleted !== computedProfileCompleted) {
         user.isProfileCompleted = computedProfileCompleted;
