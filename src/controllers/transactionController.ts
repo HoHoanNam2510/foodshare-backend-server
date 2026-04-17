@@ -242,9 +242,10 @@ export const respondToRequest = async (
 
       await transaction.save();
 
-      // Cập nhật Post (TRX_F06): luôn set BOOKED khi duyệt; HIDDEN xử lý khi hoàn tất
+      // Cập nhật Post (TRX_F06): trừ tồn kho; nếu còn hàng thì giữ AVAILABLE để người khác vẫn
+      // có thể gửi yêu cầu; pre-save hook tự set OUT_OF_STOCK khi remainingQuantity === 0.
+      // HIDDEN sẽ được set khi giao dịch hoàn tất (scanQrAndComplete).
       post.remainingQuantity -= transaction.quantity;
-      post.status = 'BOOKED';
       await post.save();
 
       res.status(200).json({
