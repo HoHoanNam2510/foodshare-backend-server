@@ -242,7 +242,7 @@ export async function getRecentUsers(page: number, limit: number = DEFAULT_LIMIT
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
     User.find()
-      .select('fullName email role status kycStatus createdAt')
+      .select('fullName email role status kycStatus avatar createdAt')
       .sort({ createdAt: sort })
       .skip(skip)
       .limit(limit)
