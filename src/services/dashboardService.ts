@@ -259,7 +259,7 @@ export async function getRecentPosts(page: number, limit: number = DEFAULT_LIMIT
   const [data, total] = await Promise.all([
     Post.find()
       .select('title type status remainingQuantity totalQuantity price createdAt')
-      .populate('ownerId', 'fullName')
+      .populate('ownerId', 'fullName avatar')
       .sort({ createdAt: sort })
       .skip(skip)
       .limit(limit)
@@ -276,8 +276,8 @@ export async function getRecentTransactions(page: number, limit: number = DEFAUL
   const [data, total] = await Promise.all([
     Transaction.find()
       .select('type status paymentMethod totalAmount quantity createdAt')
-      .populate('requesterId', 'fullName')
-      .populate('ownerId', 'fullName')
+      .populate('requesterId', 'fullName avatar')
+      .populate('ownerId', 'fullName avatar')
       .populate('postId', 'title')
       .sort({ createdAt: sort })
       .skip(skip)
@@ -295,7 +295,7 @@ export async function getRecentReports(page: number, limit: number = DEFAULT_LIM
   const [data, total] = await Promise.all([
     Report.find()
       .select('targetType reason status actionTaken createdAt')
-      .populate('reporterId', 'fullName')
+      .populate('reporterId', 'fullName avatar')
       .sort({ createdAt: sort })
       .skip(skip)
       .limit(limit)
@@ -312,7 +312,7 @@ export async function getAuditLogs(page: number, limit: number = DEFAULT_LIMIT, 
 
   const [users, posts, transactions, reports] = await Promise.all([
     User.find()
-      .select('fullName email updatedAt')
+      .select('fullName email avatar updatedAt')
       .sort({ updatedAt: sort })
       .limit(limit * 2)
       .lean()
