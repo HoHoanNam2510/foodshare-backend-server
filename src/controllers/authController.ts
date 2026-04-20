@@ -9,6 +9,7 @@ import {
   deleteMultipleImagesByUrl,
 } from '@/services/uploadService';
 import { checkAndAwardBadges } from '@/services/badgeService';
+import { softDeleteUser, SoftDeleteError } from '@/services/softDeleteService';
 
 const CODE_LENGTH = 6;
 const CODE_EXPIRE_MINUTES = 10;
@@ -494,7 +495,10 @@ export const completeProfile = async (
       try {
         await checkAndAwardBadges(userId, 'PROFILE_COMPLETED');
       } catch (err) {
-        console.warn('[AuthController] badge check (PROFILE_COMPLETED) failed:', err);
+        console.warn(
+          '[AuthController] badge check (PROFILE_COMPLETED) failed:',
+          err
+        );
       }
     }
   } catch (error: unknown) {
@@ -741,7 +745,10 @@ export const updateProfile = async (
       try {
         await checkAndAwardBadges(userId, 'PROFILE_COMPLETED');
       } catch (err) {
-        console.warn('[AuthController] badge check (PROFILE_COMPLETED) after updateProfile failed:', err);
+        console.warn(
+          '[AuthController] badge check (PROFILE_COMPLETED) after updateProfile failed:',
+          err
+        );
       }
     }
   } catch (error: unknown) {
@@ -902,5 +909,39 @@ export const registerStore = async (
       message: 'Lỗi server',
       error: errorMessage,
     });
+  }
+};
+
+// --- Xóa tài khoản của chính mình (Soft Delete + Cascade) ---
+export const deleteMyAccount = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập' });
+      return;
+    }
+
+    await softDeleteUser(userId, userId);
+
+    res.status(200).json({
+      success: true,
+      message:
+        'Tài khoản của bạn đã được chuyển vào thùng rác. Liên hệ admin trong 30 ngày để khôi phục.',
+    });
+  } catch (error: unknown) {
+    if (error instanceof SoftDeleteError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };

@@ -1,10 +1,21 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export type GracePeriodDays = 7 | 30;
+export type CleanupSchedule = 'WEEKLY' | 'MONTHLY' | 'BOTH';
+
+export interface ISoftDeleteConfig {
+  gracePeriodDays: GracePeriodDays;
+  cleanupSchedule: CleanupSchedule;
+  lastCleanupAt?: Date;
+  lastCleanupCount?: number;
+}
+
 export interface ISystemConfig extends Document {
   systemBankName: string;
   systemBankCode: string;
   systemBankAccountNumber: string;
   systemBankAccountName: string;
+  softDelete: ISoftDeleteConfig;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +27,21 @@ const SystemConfigSchema = new Schema<ISystemConfig>(
     systemBankCode: { type: String, required: true },
     systemBankAccountNumber: { type: String, required: true },
     systemBankAccountName: { type: String, required: true },
+
+    softDelete: {
+      gracePeriodDays: {
+        type: Number,
+        enum: [7, 30],
+        default: 30,
+      },
+      cleanupSchedule: {
+        type: String,
+        enum: ['WEEKLY', 'MONTHLY', 'BOTH'],
+        default: 'BOTH',
+      },
+      lastCleanupAt: { type: Date },
+      lastCleanupCount: { type: Number, default: 0 },
+    },
   },
   { timestamps: true }
 );

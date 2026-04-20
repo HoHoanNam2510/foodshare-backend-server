@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { ISoftDelete, softDeletePlugin } from '@/plugins/softDeletePlugin';
 
-export interface IVoucher extends Document {
+export interface IVoucher extends Document, ISoftDelete {
   creatorId: mongoose.Types.ObjectId;
   code: string;
   title: string;
@@ -60,6 +61,8 @@ const VoucherSchema = new Schema<IVoucher>(
   },
   { timestamps: true }
 );
+
+VoucherSchema.plugin(softDeletePlugin);
 
 // Đánh Index tối ưu:
 // (code đã có index qua unique: true trong schema field, không cần khai báo lại)

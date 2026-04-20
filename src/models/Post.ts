@@ -1,7 +1,8 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { ISoftDelete, softDeletePlugin } from '@/plugins/softDeletePlugin';
 
 // Định nghĩa Interface
-export interface IPost extends Document {
+export interface IPost extends Document, ISoftDelete {
   ownerId: mongoose.Types.ObjectId;
   type: 'P2P_FREE' | 'B2C_MYSTERY_BAG';
   category: string;
@@ -103,6 +104,8 @@ const PostSchema = new Schema<IPost>(
   },
   { timestamps: true }
 );
+
+PostSchema.plugin(softDeletePlugin);
 
 // Đánh index để tối ưu Query
 // 1. Index cho chức năng tìm kiếm xung quanh (Geospatial query)

@@ -1,7 +1,8 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { ISoftDelete, softDeletePlugin } from '@/plugins/softDeletePlugin';
 
 // Định nghĩa Interface cho TypeScript
-export interface IUser extends Document {
+export interface IUser extends Document, ISoftDelete {
   email: string;
   googleId?: string;
   phoneNumber?: string;
@@ -120,6 +121,8 @@ const UserSchema = new Schema<IUser>(
   },
   { timestamps: true }
 );
+
+UserSchema.plugin(softDeletePlugin);
 
 // Quan trọng: Đánh index 2dsphere để query bản đồ theo bán kính
 UserSchema.index({ location: '2dsphere' });

@@ -4,6 +4,7 @@ import {
   storeUpdateVoucher,
   storeToggleVoucher,
   storeGetMyVouchers,
+  storeDeleteVoucher,
   getVoucherMarket,
   redeemVoucher,
   getMyVouchers,
@@ -76,5 +77,9 @@ router.put(
 // [PATCH] /api/vouchers/:id/toggle
 // (Cửa hàng khóa/mở lại Voucher)
 router.patch('/:id/toggle', verifyAuth, storeToggleVoucher);
+
+// [DELETE] /api/vouchers/:id
+// (Cửa hàng xóa Voucher — soft delete)
+router.delete('/:id', verifyAuth, storeDeleteVoucher);
 
 export default router;

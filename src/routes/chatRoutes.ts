@@ -5,6 +5,7 @@ import {
   getMyConversations,
   getMessagesInConversation,
   markAsRead,
+  deleteConversation,
   adminGetConversations,
   adminGetMessagesDetail,
   adminToggleLockConversation,
@@ -78,6 +79,10 @@ router.get(
 // [PUT] /api/chat/conversations/:conversationId/read
 // (Đánh dấu đã đọc)
 router.put('/conversations/:conversationId/read', verifyAuth, markAsRead);
+
+// [DELETE] /api/chat/conversations/:conversationId
+// (User xóa cuộc trò chuyện — soft delete + cascade messages)
+router.delete('/conversations/:conversationId', verifyAuth, deleteConversation);
 
 // [POST] /api/chat/messages
 // (Gửi tin nhắn mới)

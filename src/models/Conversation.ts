@@ -1,8 +1,9 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { ISoftDelete, softDeletePlugin } from '@/plugins/softDeletePlugin';
 
 export type ConversationStatus = 'ACTIVE' | 'LOCKED';
 
-export interface IConversation extends Document {
+export interface IConversation extends Document, ISoftDelete {
   transactionId?: mongoose.Types.ObjectId;
   participants: mongoose.Types.ObjectId[];
   lastMessage?: mongoose.Types.ObjectId;
@@ -41,6 +42,8 @@ const ConversationSchema = new Schema<IConversation>(
   },
   { timestamps: true }
 );
+
+ConversationSchema.plugin(softDeletePlugin);
 
 // Đánh Index để tối ưu:
 // 1. Khi user mở tab Tin nhắn -> Lấy danh sách các cuộc hội thoại của user đó, sắp xếp theo thời gian mới nhất

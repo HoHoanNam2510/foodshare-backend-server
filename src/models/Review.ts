@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { ISoftDelete, softDeletePlugin } from '@/plugins/softDeletePlugin';
 
-export interface IReview extends Document {
+export interface IReview extends Document, ISoftDelete {
   transactionId: mongoose.Types.ObjectId;
   reviewerId: mongoose.Types.ObjectId;
   revieweeId: mongoose.Types.ObjectId;
@@ -40,6 +41,8 @@ const ReviewSchema = new Schema<IReview>(
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );
+
+ReviewSchema.plugin(softDeletePlugin);
 
 // Đánh Index để tối ưu và bảo vệ dữ liệu:
 // 1. Chống Spam: Mỗi người chỉ được đánh giá 1 lần cho 1 giao dịch

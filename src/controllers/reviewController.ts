@@ -251,7 +251,8 @@ export const adminDeleteReview = async (
       ? req.params.reviewId[0]
       : req.params.reviewId;
 
-    const result = await adminDeleteReviewService(reviewId);
+    const adminId = req.user!.id;
+    const result = await adminDeleteReviewService(reviewId, adminId);
 
     res.status(200).json({
       success: true,

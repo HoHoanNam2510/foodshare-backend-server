@@ -5,6 +5,7 @@ import PostCreationPasscode from '@/models/PostCreationPasscode';
 import Transaction from '@/models/Transaction';
 import User from '@/models/User';
 import { deleteMultipleImagesByUrl } from '@/services/uploadService';
+import { softDeletePost, SoftDeleteError } from '@/services/softDeleteService';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
 import { runAIModerationJob, getAdminPostList } from '@/services/postService';
 import { checkAndAwardBadges } from '@/services/badgeService';
@@ -63,8 +64,7 @@ export const sendCreatePostPasscode = async (
     if (!user.isEmailVerified && user.authProvider !== 'GOOGLE') {
       res.status(403).json({
         success: false,
-        message:
-          'Bạn cần xác minh email trước khi tạo bài đăng',
+        message: 'Bạn cần xác minh email trước khi tạo bài đăng',
         errorCode: 'EMAIL_NOT_VERIFIED',
       });
       return;
@@ -74,8 +74,7 @@ export const sendCreatePostPasscode = async (
     if (user.role === 'STORE' && user.kycStatus !== 'VERIFIED') {
       res.status(403).json({
         success: false,
-        message:
-          'Cửa hàng cần được xác minh KYC trước khi tạo bài đăng',
+        message: 'Cửa hàng cần được xác minh KYC trước khi tạo bài đăng',
         errorCode: 'KYC_NOT_VERIFIED',
       });
       return;
@@ -342,7 +341,11 @@ export const updatePost = async (
     }
 
     // Chặn sửa trường nhạy cảm về số lượng/giá nếu có giao dịch đang hoạt động
-    const QUANTITY_PRICE_FIELDS = ['totalQuantity', 'remainingQuantity', 'price'];
+    const QUANTITY_PRICE_FIELDS = [
+      'totalQuantity',
+      'remainingQuantity',
+      'price',
+    ];
     const hasQuantityOrPriceChange = QUANTITY_PRICE_FIELDS.some(
       (field) => field in updates
     );
@@ -408,51 +411,33 @@ export const updatePost = async (
   }
 };
 
-// --- PST_F04: XÓA BÀI ĐĂNG (Delete Post) ---
+// --- PST_F04: XÓA BÀI ĐĂNG (Soft Delete Post) ---
 export const deletePost = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const postId = req.params.id;
+    const postId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const ownerId = req.user?.id;
 
-    const post = await Post.findOne({ _id: postId, ownerId });
-
-    if (!post) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy bài đăng hoặc bạn không có quyền xóa',
-      });
+    if (!ownerId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập' });
       return;
     }
 
-    // Chặn xóa nếu còn giao dịch đang hoạt động
-    const activeTransactionCount = await Transaction.countDocuments({
-      postId: post._id,
-      status: { $in: ['PENDING', 'ACCEPTED', 'ESCROWED', 'DISPUTED'] },
-    });
-
-    if (activeTransactionCount > 0) {
-      res.status(400).json({
-        success: false,
-        message: `Không thể xóa bài đăng vì còn ${activeTransactionCount} giao dịch đang xử lý. Vui lòng chờ hoàn tất hoặc hủy các giao dịch trước.`,
-      });
-      return;
-    }
-
-    await Post.deleteOne({ _id: postId });
-
-    // Xóa tất cả ảnh của bài đăng trên Cloudinary (fire-and-forget)
-    if (post.images && post.images.length > 0) {
-      deleteMultipleImagesByUrl(post.images).catch(() => {});
-    }
+    await softDeletePost(postId, ownerId, ownerId);
 
     res.status(200).json({
       success: true,
-      message: 'Xóa bài đăng thành công',
+      message: 'Bài đăng đã được chuyển vào thùng rác',
     });
   } catch (error: unknown) {
+    if (error instanceof SoftDeleteError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)

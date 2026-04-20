@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 
 import {
+  softDeleteVoucher,
+  SoftDeleteError,
+} from '@/services/softDeleteService';
+import {
   VoucherServiceError,
   storeCreateVoucher as storeCreateVoucherService,
   storeUpdateVoucher as storeUpdateVoucherService,
@@ -321,6 +325,42 @@ export const adminToggleVoucher = async (
       data: voucher,
     });
   } catch (error) {
+    handleVoucherError(error, res);
+  }
+};
+
+/**
+ * [DELETE] /api/vouchers/:id
+ * Store xóa voucher của mình (soft delete).
+ */
+export const storeDeleteVoucher = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const creatorId = req.user?.id;
+    if (!creatorId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập' });
+      return;
+    }
+
+    const voucherId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
+
+    await softDeleteVoucher(voucherId, creatorId, creatorId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Voucher đã được chuyển vào thùng rác',
+    });
+  } catch (error) {
+    if (error instanceof SoftDeleteError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     handleVoucherError(error, res);
   }
 };

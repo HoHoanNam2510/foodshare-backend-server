@@ -21,6 +21,7 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import configRoutes from './routes/configRoutes';
 import badgeRoutes from './routes/badgeRoutes';
 import translateRoutes from './routes/translateRoutes';
+import trashRoutes from './routes/trashRoutes';
 import logger from './utils/logger';
 import { startScheduler } from './utils/scheduler';
 
@@ -73,6 +74,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/badges', badgeRoutes);
 app.use('/api/translate', translateRoutes);
+app.use('/api/admin/trash', trashRoutes);
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

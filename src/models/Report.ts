@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { ISoftDelete, softDeletePlugin } from '@/plugins/softDeletePlugin';
 
 export type ReportTargetType = 'POST' | 'USER' | 'TRANSACTION' | 'REVIEW';
 export type ReportReason =
@@ -16,7 +17,7 @@ export type ReportAction =
   | 'REFUNDED'
   | 'REVIEW_DELETED';
 
-export interface IReport extends Document {
+export interface IReport extends Document, ISoftDelete {
   reporterId: mongoose.Types.ObjectId;
   targetType: ReportTargetType;
   targetId: mongoose.Types.ObjectId;
@@ -102,6 +103,8 @@ const ReportSchema = new Schema<IReport>(
   },
   { timestamps: true }
 );
+
+ReportSchema.plugin(softDeletePlugin);
 
 // Đánh Index để tối ưu hiển thị cho Admin Dashboard:
 // 1. Lọc danh sách Report theo trạng thái (VD: Admin muốn xem các đơn đang PENDING)

@@ -1,8 +1,9 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { ISoftDelete, softDeletePlugin } from '@/plugins/softDeletePlugin';
 
 export type MessageType = 'TEXT' | 'IMAGE' | 'LOCATION';
 
-export interface IMessage extends Document {
+export interface IMessage extends Document, ISoftDelete {
   conversationId: mongoose.Types.ObjectId;
   senderId: mongoose.Types.ObjectId;
   messageType: MessageType;
@@ -59,6 +60,8 @@ const MessageSchema = new Schema<IMessage>(
   },
   { timestamps: { updatedAt: false } } // Tắt updatedAt vì tin nhắn thường không sửa
 );
+
+MessageSchema.plugin(softDeletePlugin);
 
 // Đánh Index để tối ưu:
 // 1. Load tin nhắn của phòng chat theo thứ tự thời gian

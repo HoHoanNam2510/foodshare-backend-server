@@ -1,5 +1,6 @@
 import User, { IUser } from '@/models/User';
 import { hashPassword } from '@/utils/auth';
+import { softDeleteUser } from '@/services/softDeleteService';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
@@ -399,7 +400,7 @@ export async function deleteUser(
   requesterId: string
 ): Promise<Record<string, unknown>> {
   if (id === requesterId) {
-    throw new UserServiceError('Không thể xóa tài khoản của chính mình', 403);
+    throw new UserServiceError('Không thể tự xóa tài khoản admin của mình', 403);
   }
 
   const user = await User.findById(id);
@@ -408,13 +409,8 @@ export async function deleteUser(
     throw new UserServiceError('Không tìm thấy người dùng', 404);
   }
 
-  if (user.status === 'ACTIVE') {
-    throw new UserServiceError(
-      'Không thể xóa tài khoản đang hoạt động. Vui lòng khóa tài khoản trước.',
-      400
-    );
-  }
+  // Soft delete với cascade — gọi softDeleteUser từ softDeleteService
+  await softDeleteUser(id, requesterId);
 
-  await User.findByIdAndDelete(id);
   return toSafeUser(user);
 }

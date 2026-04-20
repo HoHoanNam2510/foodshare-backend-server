@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 
 import {
+  softDeleteConversation,
+  SoftDeleteError,
+} from '@/services/softDeleteService';
+import {
   ChatServiceError,
   getOrCreateConversation as getOrCreateConversationService,
   sendMessage as sendMessageService,
@@ -292,6 +296,42 @@ export const adminToggleLockConversation = async (
       data: conversation,
     });
   } catch (error) {
+    handleChatError(error, res);
+  }
+};
+
+/**
+ * [DELETE] /api/chat/conversations/:conversationId
+ * User xóa cuộc trò chuyện của mình (soft delete + cascade messages).
+ */
+export const deleteConversation = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const currentUserId = req.user?.id;
+    if (!currentUserId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập' });
+      return;
+    }
+
+    const conversationId = Array.isArray(req.params.conversationId)
+      ? req.params.conversationId[0]
+      : req.params.conversationId;
+
+    await softDeleteConversation(conversationId, currentUserId, currentUserId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Cuộc trò chuyện đã được chuyển vào thùng rác',
+    });
+  } catch (error) {
+    if (error instanceof SoftDeleteError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     handleChatError(error, res);
   }
 };

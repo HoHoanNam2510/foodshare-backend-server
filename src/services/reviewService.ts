@@ -31,8 +31,14 @@ export class ReviewServiceError extends Error {
 export async function recalculateAverageRating(
   revieweeId: string
 ): Promise<number> {
+  // Aggregate bypass pre-find hook → phải filter isDeleted thủ công
   const result = await Review.aggregate([
-    { $match: { revieweeId: new mongoose.Types.ObjectId(revieweeId) } },
+    {
+      $match: {
+        revieweeId: new mongoose.Types.ObjectId(revieweeId),
+        isDeleted: { $ne: true },
+      },
+    },
     {
       $group: {
         _id: null,
@@ -322,7 +328,14 @@ export async function deleteMyReview(
 
   const revieweeId = review.revieweeId.toString();
 
-  await review.deleteOne();
+  // Soft delete thay vì hard delete
+  await Review.findByIdAndUpdate(reviewId, {
+    $set: {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: new mongoose.Types.ObjectId(reviewerId),
+    },
+  });
 
   // BẮT BUỘC tính toán lại averageRating sau khi xóa
   await recalculateAverageRating(revieweeId);
@@ -384,7 +397,8 @@ export async function adminGetReviews(
  * Admin xóa bỏ đánh giá ác ý + phục hồi averageRating cho người bị đánh giá.
  */
 export async function adminDeleteReview(
-  reviewId: string
+  reviewId: string,
+  adminId?: string
 ): Promise<{ deletedRevieweeId: string; newAverageRating: number }> {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
     throw new ReviewServiceError('Review ID không hợp lệ', 400);
@@ -397,8 +411,15 @@ export async function adminDeleteReview(
 
   const revieweeId = review.revieweeId.toString();
 
-  // Xóa cứng bài review
-  await review.deleteOne();
+  // Soft delete thay vì hard delete
+  const updateFields: Record<string, unknown> = {
+    isDeleted: true,
+    deletedAt: new Date(),
+  };
+  if (adminId && mongoose.Types.ObjectId.isValid(adminId)) {
+    updateFields.deletedBy = new mongoose.Types.ObjectId(adminId);
+  }
+  await Review.findByIdAndUpdate(reviewId, { $set: updateFields });
 
   // Phục hồi nhân phẩm: Tính toán lại averageRating
   const newAverageRating = await recalculateAverageRating(revieweeId);

@@ -12,6 +12,7 @@ import {
   updateProfile,
   updateMyLocation,
   registerStore,
+  deleteMyAccount,
 } from '../controllers/authController';
 import {
   sendEmailVerificationCode,
@@ -106,5 +107,9 @@ router.put(
   validateBody(updateLocationSchema),
   updateMyLocation
 );
+
+// [DELETE] /api/auth/me/account
+// (User tự xóa tài khoản — soft delete + cascade Posts, Reviews, Conversations)
+router.delete('/me/account', verifyAuth, deleteMyAccount);
 
 export default router;

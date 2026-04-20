@@ -3,6 +3,8 @@ import cron from 'node-cron';
 import Transaction from '@/models/Transaction';
 import EscrowLedger from '@/models/EscrowLedger';
 import Post from '@/models/Post';
+import SystemConfig from '@/models/SystemConfig';
+import { runCleanup } from '@/services/softDeleteService';
 import logger from '@/utils/logger';
 
 /**
@@ -114,6 +116,23 @@ async function checkPaymentTimeouts(): Promise<void> {
  * Khởi chạy tất cả cron jobs.
  * Gọi hàm này sau khi kết nối MongoDB thành công.
  */
+async function runTrashCleanup(): Promise<void> {
+  try {
+    const config = await SystemConfig.findOne();
+    const gracePeriodDays = config?.softDelete?.gracePeriodDays ?? 30;
+    const schedule = config?.softDelete?.cleanupSchedule ?? 'BOTH';
+
+    logger.info(`[Scheduler] Running trash cleanup (grace: ${gracePeriodDays}d)...`);
+    const results = await runCleanup(gracePeriodDays);
+    const total = results.reduce((sum, r) => sum + r.purgedCount, 0);
+    logger.info(`[Scheduler] Trash cleanup done — purged ${total} records`);
+
+    return void schedule; // suppress unused variable warning
+  } catch (err) {
+    logger.error('[Scheduler] Trash cleanup failed:', err);
+  }
+}
+
 export function startScheduler(): void {
   // Chạy mỗi 5 phút — kiểm tra pickup deadline
   cron.schedule('*/5 * * * *', async () => {
@@ -127,5 +146,25 @@ export function startScheduler(): void {
     await checkPaymentTimeouts();
   });
 
-  logger.info('[Scheduler] Cron jobs started — pickup deadline (5min), payment timeout (2min)');
+  // Chủ nhật 3:00 AM — dọn dẹp thùng rác cuối tuần
+  cron.schedule('0 3 * * 0', async () => {
+    const config = await SystemConfig.findOne();
+    const schedule = config?.softDelete?.cleanupSchedule ?? 'BOTH';
+    if (schedule === 'WEEKLY' || schedule === 'BOTH') {
+      await runTrashCleanup();
+    }
+  });
+
+  // Ngày 1 hàng tháng 3:00 AM — dọn dẹp thùng rác đầu tháng
+  cron.schedule('0 3 1 * *', async () => {
+    const config = await SystemConfig.findOne();
+    const schedule = config?.softDelete?.cleanupSchedule ?? 'BOTH';
+    if (schedule === 'MONTHLY' || schedule === 'BOTH') {
+      await runTrashCleanup();
+    }
+  });
+
+  logger.info(
+    '[Scheduler] Cron jobs started — pickup deadline (5min), payment timeout (2min), trash cleanup (weekly Sun + monthly 1st at 3AM)'
+  );
 }
