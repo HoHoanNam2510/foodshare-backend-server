@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Post, { IPost } from '@/models/Post';
-import Notification from '@/models/Notification';
+import { createNotification } from '@/services/notificationService';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
@@ -102,23 +102,23 @@ export async function runAIModerationJob(postId: string): Promise<void> {
     if (trustScore < TRUST_SCORE_REJECT_THRESHOLD) {
       // < 50%: Từ chối
       await Post.findByIdAndUpdate(postId, { status: 'REJECTED' });
-      await Notification.create({
-        userId: post.ownerId,
-        type: 'SYSTEM',
-        title: 'Bài đăng bị từ chối',
-        body: `Bài đăng "${post.title}" đã bị từ chối. Lý do: ${reason}`,
-        referenceId: postId,
-      });
+      await createNotification(
+        post.ownerId.toString(),
+        'SYSTEM',
+        'Bài đăng bị từ chối',
+        `Bài đăng "${post.title}" đã bị từ chối. Lý do: ${reason}`,
+        postId
+      );
     } else if (trustScore >= TRUST_SCORE_AVAILABLE_THRESHOLD) {
       // >= 70%: Duyệt tự động
       await Post.findByIdAndUpdate(postId, { status: 'AVAILABLE' });
-      await Notification.create({
-        userId: post.ownerId,
-        type: 'SYSTEM',
-        title: 'Bài đăng đã được duyệt',
-        body: `Bài đăng "${post.title}" đã được duyệt và xuất hiện trên bản đồ.`,
-        referenceId: postId,
-      });
+      await createNotification(
+        post.ownerId.toString(),
+        'SYSTEM',
+        'Bài đăng đã được duyệt',
+        `Bài đăng "${post.title}" đã được duyệt và xuất hiện trên bản đồ.`,
+        postId
+      );
     }
     // 50-69%: Giữ nguyên PENDING_REVIEW, chờ Admin duyệt thủ công
   } catch (error) {

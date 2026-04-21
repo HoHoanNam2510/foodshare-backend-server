@@ -5,6 +5,7 @@ import EscrowLedger from '@/models/EscrowLedger';
 import Post from '@/models/Post';
 import SystemConfig from '@/models/SystemConfig';
 import { runCleanup } from '@/services/softDeleteService';
+import { createNotification } from '@/services/notificationService';
 import logger from '@/utils/logger';
 
 /**
@@ -59,6 +60,23 @@ async function checkPickupDeadlines(): Promise<void> {
         await post.save();
       }
 
+      await Promise.all([
+        createNotification(
+          transaction.requesterId.toString(),
+          'TRANSACTION',
+          'Đã hoàn tiền',
+          'Đơn hàng đã bị hủy do quá hạn nhận hàng. Tiền đã được hoàn về tài khoản của bạn.',
+          transaction._id.toString()
+        ),
+        createNotification(
+          transaction.ownerId.toString(),
+          'TRANSACTION',
+          'Đơn hàng hết hạn',
+          'Một đơn hàng đã hết hạn nhận hàng và được tự động hủy.',
+          transaction._id.toString()
+        ),
+      ]);
+
       logger.info(`[Scheduler] Auto-refunded expired order`, {
         transactionId: transaction._id,
       });
@@ -99,6 +117,14 @@ async function checkPaymentTimeouts(): Promise<void> {
         if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
         await post.save();
       }
+
+      await createNotification(
+        transaction.requesterId.toString(),
+        'TRANSACTION',
+        'Đơn hàng đã hết hạn',
+        'Đơn hàng của bạn đã bị hủy do hết thời gian thanh toán.',
+        transaction._id.toString()
+      );
 
       logger.info(`[Scheduler] Auto-cancelled expired PENDING order`, {
         transactionId: transaction._id,

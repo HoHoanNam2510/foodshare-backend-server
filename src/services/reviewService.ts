@@ -5,6 +5,7 @@ import User from '@/models/User';
 import Transaction from '@/models/Transaction';
 import PointLog from '@/models/PointLog';
 import { checkAndAwardBadges } from '@/services/badgeService';
+import { createNotification } from '@/services/notificationService';
 
 // Hằng số
 const REVIEW_REWARD_POINTS = 2;
@@ -162,6 +163,14 @@ export async function createReview(
     reason: 'Thưởng điểm vì đã để lại đánh giá giao dịch',
     referenceId: new mongoose.Types.ObjectId(transactionId),
   });
+
+  await createNotification(
+    revieweeId,
+    'SYSTEM',
+    'Bạn có đánh giá mới!',
+    `Bạn vừa nhận được đánh giá ${rating} sao từ một giao dịch vừa hoàn tất.`,
+    new mongoose.Types.ObjectId(transactionId).toString()
+  );
 
   // Trigger REVIEW_RECEIVED badge check cho người bị đánh giá
   try {

@@ -6,8 +6,8 @@ import User from '@/models/User';
 import Post from '@/models/Post';
 import Transaction from '@/models/Transaction';
 import Review from '@/models/Review';
-import Notification from '@/models/Notification';
 import PointLog from '@/models/PointLog';
+import { createNotification } from '@/services/notificationService';
 
 // Ngày ra mắt ứng dụng — EARLY_BIRD chỉ trao cho user đăng ký trước mốc này
 const LAUNCH_CUTOFF = new Date('2026-07-01T00:00:00.000Z');
@@ -202,14 +202,13 @@ async function awardBadge(userId: string, badge: IBadge): Promise<void> {
     }),
   ]);
 
-  // Tạo thông báo in-app
-  await Notification.create({
-    userId,
-    type: 'SYSTEM',
-    title: 'Huy hiệu mới!',
-    body: `Chúc mừng! Bạn vừa mở khóa huy hiệu "${badge.name}"! +${badge.pointReward} điểm`,
-    referenceId: badge._id,
-  });
+  await createNotification(
+    userId.toString(),
+    'SYSTEM',
+    'Huy hiệu mới!',
+    `Chúc mừng! Bạn vừa mở khóa huy hiệu "${badge.name}"! +${badge.pointReward} điểm`,
+    (badge._id as mongoose.Types.ObjectId).toString()
+  );
 }
 
 /**

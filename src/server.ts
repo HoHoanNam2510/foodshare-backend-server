@@ -6,6 +6,7 @@ import { createServer } from 'http';
 import morgan from 'morgan';
 import { Server } from 'socket.io';
 
+import jwt from 'jsonwebtoken';
 import authRoutes from './routes/authRoutes';
 import postRoutes from './routes/postRoutes';
 import transactionRoutes from './routes/transactionRoutes';
@@ -22,8 +23,12 @@ import configRoutes from './routes/configRoutes';
 import badgeRoutes from './routes/badgeRoutes';
 import translateRoutes from './routes/translateRoutes';
 import trashRoutes from './routes/trashRoutes';
+import notificationRoutes from './routes/notificationRoutes';
 import logger from './utils/logger';
 import { startScheduler } from './utils/scheduler';
+import { initNotificationService } from './services/notificationService';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key_for_dev';
 
 const app: Express = express();
 const httpServer = createServer(app);
@@ -75,6 +80,7 @@ app.use('/api/config', configRoutes);
 app.use('/api/badges', badgeRoutes);
 app.use('/api/translate', translateRoutes);
 app.use('/api/admin/trash', trashRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
@@ -100,6 +106,9 @@ mongoose
     // Khởi chạy cron jobs (pickup deadline, payment timeout)
     startScheduler();
 
+    // Khởi tạo notification service với io instance
+    initNotificationService(io);
+
     // Chỉ khởi động server khi đã kết nối DB xong
     httpServer.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server đang chạy tại http://0.0.0.0:${PORT}`);
@@ -115,9 +124,32 @@ mongoose
     process.exit(1);
   });
 
+// Socket.io JWT authentication middleware — set socket.data.userId nếu token hợp lệ
+io.use((socket, next) => {
+  const token =
+    (socket.handshake.auth as { token?: string }).token ||
+    (socket.handshake.headers.authorization as string | undefined)?.replace('Bearer ', '');
+
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET) as { id: string };
+      socket.data.userId = payload.id;
+    } catch {
+      // Token không hợp lệ — socket vẫn kết nối được, chỉ không có userId
+    }
+  }
+  next();
+});
+
 // Lắng nghe các kết nối Socket.io (Chat Realtime)
 io.on('connection', (socket) => {
   logger.info(`🔌 Socket kết nối: ${socket.id}`);
+
+  // Auto-join personal notification room nếu đã xác thực
+  if (socket.data.userId) {
+    socket.join(`user:${socket.data.userId}`);
+    logger.info(`Socket ${socket.id} đã join room: user:${socket.data.userId}`);
+  }
 
   // Client tham gia phòng chat
   socket.on('join-room', (conversationId: string) => {

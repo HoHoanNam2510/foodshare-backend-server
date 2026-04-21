@@ -8,6 +8,7 @@ import Post from '@/models/Post';
 import EscrowLedger from '@/models/EscrowLedger';
 import { awardTransactionPoints } from '@/services/greenPointService';
 import { checkAndAwardBadges } from '@/services/badgeService';
+import { createNotification } from '@/services/notificationService';
 import { generateVietQR } from '@/services/payment';
 import SystemConfig from '@/models/SystemConfig';
 import logger from '@/utils/logger';
@@ -219,6 +220,13 @@ export const respondToRequest = async (
     if (response === 'REJECT') {
       transaction.status = 'REJECTED'; // TRX_F05
       await transaction.save();
+      await createNotification(
+        transaction.requesterId.toString(),
+        'TRANSACTION',
+        'Yêu cầu bị từ chối',
+        'Yêu cầu xin đồ của bạn đã bị từ chối bởi người đăng.',
+        transaction._id.toString()
+      );
       res.status(200).json({ success: true, message: 'Đã từ chối yêu cầu' });
       return;
     }
@@ -247,6 +255,14 @@ export const respondToRequest = async (
       // HIDDEN sẽ được set khi giao dịch hoàn tất (scanQrAndComplete).
       post.remainingQuantity -= transaction.quantity;
       await post.save();
+
+      await createNotification(
+        transaction.requesterId.toString(),
+        'TRANSACTION',
+        'Yêu cầu được chấp nhận!',
+        'Yêu cầu xin đồ của bạn đã được chấp nhận. Hãy đến nhận đồ và quét mã QR.',
+        transaction._id.toString()
+      );
 
       res.status(200).json({
         success: true,
@@ -432,6 +448,14 @@ export const adminConfirmPayment = async (
       transactionId,
     });
 
+    await createNotification(
+      transaction.requesterId.toString(),
+      'TRANSACTION',
+      'Thanh toán đã xác nhận!',
+      'Đơn hàng của bạn đã được xác nhận. Hãy đến nhận hàng trong vòng 24 giờ.',
+      transaction._id.toString()
+    );
+
     res.status(200).json({
       success: true,
       message: 'Đã xác nhận thanh toán. Đơn hàng chuyển sang trạng thái chờ giao.',
@@ -570,6 +594,23 @@ export const scanQrAndComplete = async (
       transaction.ownerId.toString()
     );
 
+    await Promise.all([
+      createNotification(
+        transaction.requesterId.toString(),
+        'TRANSACTION',
+        'Giao dịch hoàn tất!',
+        'Giao dịch của bạn đã hoàn tất thành công. Cảm ơn bạn đã sử dụng FoodShare!',
+        transaction._id.toString()
+      ),
+      createNotification(
+        transaction.ownerId.toString(),
+        'TRANSACTION',
+        'Giao dịch hoàn tất!',
+        'Đồ của bạn đã được nhận thành công. Cảm ơn bạn đã chia sẻ!',
+        transaction._id.toString()
+      ),
+    ]);
+
     res.status(200).json({
       success: true,
       message:
@@ -606,7 +647,7 @@ export const getMyTransactions = async (
     const requesterId = req.user?.id;
 
     const transactions = await Transaction.find({ requesterId })
-      .populate('postId', 'title images type price')
+      .populate({ path: 'postId', select: 'title images type price', match: { isDeleted: { $in: [true, false, null] } } })
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, data: transactions });
@@ -628,7 +669,7 @@ export const getMyTransactionsAsOwner = async (
     const ownerId = req.user?.id;
 
     const transactions = await Transaction.find({ ownerId })
-      .populate('postId', 'title images type price')
+      .populate({ path: 'postId', select: 'title images type price', match: { isDeleted: { $in: [true, false, null] } } })
       .populate('requesterId', 'fullName avatar averageRating')
       .sort({ createdAt: -1 });
 
@@ -697,6 +738,14 @@ export const cancelOrderByStore = async (
       await post.save();
     }
 
+    await createNotification(
+      transaction.requesterId.toString(),
+      'TRANSACTION',
+      'Đã hoàn tiền',
+      'Đơn hàng đã bị hủy và tiền đã được hoàn về tài khoản của bạn.',
+      transaction._id.toString()
+    );
+
     res.status(200).json({
       success: true,
       message: 'Đã hủy đơn và hoàn tiền cho khách',
@@ -723,7 +772,7 @@ export const getTransactionById = async (
       _id: transactionId,
       $or: [{ requesterId: userId }, { ownerId: userId }],
     })
-      .populate('postId', 'title images type price')
+      .populate({ path: 'postId', select: 'title images type price', match: { isDeleted: { $in: [true, false, null] } } })
       .populate('requesterId', 'fullName avatar averageRating');
 
     if (!transaction) {
@@ -1142,6 +1191,23 @@ export const adminResolveDispute = async (
         await post.save();
       }
 
+      await Promise.all([
+        createNotification(
+          transaction.requesterId.toString(),
+          'TRANSACTION',
+          'Đã hoàn tiền',
+          'Đơn hàng đã bị hủy và tiền đã được hoàn về tài khoản của bạn.',
+          transaction._id.toString()
+        ),
+        createNotification(
+          transaction.ownerId.toString(),
+          'TRANSACTION',
+          'Đã hoàn tiền',
+          'Đơn hàng đã bị hủy và tiền đã được hoàn về tài khoản của người mua.',
+          transaction._id.toString()
+        ),
+      ]);
+
       res.status(200).json({
         success: true,
         message: 'Đã hoàn tiền cho buyer',
@@ -1157,6 +1223,23 @@ export const adminResolveDispute = async (
 
       transaction.status = 'COMPLETED';
       await transaction.save();
+
+      await Promise.all([
+        createNotification(
+          transaction.requesterId.toString(),
+          'TRANSACTION',
+          'Giao dịch hoàn tất!',
+          'Giao dịch của bạn đã hoàn tất thành công. Cảm ơn bạn đã sử dụng FoodShare!',
+          transaction._id.toString()
+        ),
+        createNotification(
+          transaction.ownerId.toString(),
+          'TRANSACTION',
+          'Giao dịch hoàn tất!',
+          'Đồ của bạn đã được nhận thành công. Cảm ơn bạn đã chia sẻ!',
+          transaction._id.toString()
+        ),
+      ]);
 
       res.status(200).json({
         success: true,

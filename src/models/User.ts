@@ -35,6 +35,7 @@ export interface IUser extends Document, ISoftDelete {
   };
   greenPoints: number;
   averageRating: number;
+  expoPushToken?: string;
   /** PENDING_KYC: user đã nộp hồ sơ cửa hàng, đang chờ admin xét duyệt */
   status: 'ACTIVE' | 'BANNED' | 'PENDING_KYC';
   createdAt: Date;
@@ -113,6 +114,7 @@ const UserSchema = new Schema<IUser>(
 
     greenPoints: { type: Number, default: 0 },
     averageRating: { type: Number, default: 5.0 },
+    expoPushToken: { type: String, default: null },
     status: {
       type: String,
       enum: ['ACTIVE', 'BANNED', 'PENDING_KYC'],

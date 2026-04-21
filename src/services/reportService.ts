@@ -10,7 +10,7 @@ import Post from '@/models/Post';
 import User from '@/models/User';
 import Transaction from '@/models/Transaction';
 import Review from '@/models/Review';
-import Notification from '@/models/Notification';
+import { createNotification } from '@/services/notificationService';
 import { applyPenaltyPoints } from '@/services/greenPointService';
 import { recalculateAverageRating } from '@/services/reviewService';
 
@@ -330,18 +330,24 @@ export async function adminProcessReport(
 
   await report.save();
 
-  // Gửi thông báo cho người báo cáo khi bị bác bỏ (DISMISSED)
-  // để họ biết rằng họ có thể gửi lại với bằng chứng tốt hơn.
   if (status === 'DISMISSED') {
-    await Notification.create({
-      userId: report.reporterId,
-      type: 'SYSTEM',
-      title: 'Báo cáo của bạn đã bị bác bỏ',
-      body: resolutionNote
-        ? `Báo cáo của bạn đã bị bác bỏ. Lý do: ${resolutionNote}. Bạn có thể gửi lại báo cáo với bằng chứng rõ ràng hơn.`
-        : 'Báo cáo của bạn đã bị bác bỏ. Bạn có thể gửi lại báo cáo với bằng chứng rõ ràng hơn.',
-      referenceId: report._id as mongoose.Types.ObjectId,
-    });
+    await createNotification(
+      report.reporterId.toString(),
+      'SYSTEM',
+      'Báo cáo bị bác bỏ',
+      resolutionNote
+        ? `Báo cáo của bạn đã bị bác bỏ. Lý do: ${resolutionNote}. Nếu có thêm bằng chứng, hãy gửi báo cáo mới.`
+        : 'Báo cáo của bạn đã bị bác bỏ. Nếu có thêm bằng chứng, hãy gửi báo cáo mới.',
+      (report._id as mongoose.Types.ObjectId).toString()
+    );
+  } else if (status === 'RESOLVED') {
+    await createNotification(
+      report.reporterId.toString(),
+      'SYSTEM',
+      'Báo cáo đã được xử lý',
+      'Báo cáo của bạn đã được xem xét và xử lý.',
+      (report._id as mongoose.Types.ObjectId).toString()
+    );
   }
 
   return report;
