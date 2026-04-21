@@ -30,3 +30,15 @@ export const trashIdParamSchema = z.object({
 export const restoreUserBodySchema = z.object({
   restoreAssociated: z.boolean().optional().default(false),
 });
+
+// User-facing trash (chỉ cho phép posts | reviews | vouchers)
+export const USER_TRASH_COLLECTIONS = ['posts', 'reviews', 'vouchers'] as const;
+
+export const userTrashCollectionParamSchema = z.object({
+  collection: z.enum(USER_TRASH_COLLECTIONS, {
+    errorMap: () => ({
+      message: `collection phải là một trong: ${USER_TRASH_COLLECTIONS.join(', ')}`,
+    }),
+  }),
+  id: mongoIdSchema,
+});

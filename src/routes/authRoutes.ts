@@ -15,6 +15,13 @@ import {
   deleteMyAccount,
 } from '../controllers/authController';
 import {
+  getMyTrash,
+  restoreMyItem,
+  purgeMyItem,
+} from '../controllers/userTrashController';
+import { validateParams } from '../middlewares/validateRequestMiddleware';
+import { userTrashCollectionParamSchema } from '../validations/trashValidation';
+import {
   sendEmailVerificationCode,
   verifyEmail,
 } from '../controllers/emailVerificationController';
@@ -111,5 +118,24 @@ router.put(
 // [DELETE] /api/auth/me/account
 // (User tự xóa tài khoản — soft delete + cascade Posts, Reviews, Conversations)
 router.delete('/me/account', verifyAuth, deleteMyAccount);
+
+// [GET] /api/auth/me/trash?collection=posts|reviews|vouchers&page=1&limit=20
+router.get('/me/trash', verifyAuth, getMyTrash);
+
+// [POST] /api/auth/me/trash/restore/:collection/:id
+router.post(
+  '/me/trash/restore/:collection/:id',
+  verifyAuth,
+  validateParams(userTrashCollectionParamSchema),
+  restoreMyItem
+);
+
+// [DELETE] /api/auth/me/trash/purge/:collection/:id
+router.delete(
+  '/me/trash/purge/:collection/:id',
+  verifyAuth,
+  validateParams(userTrashCollectionParamSchema),
+  purgeMyItem
+);
 
 export default router;

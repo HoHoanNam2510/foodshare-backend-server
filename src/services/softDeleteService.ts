@@ -398,7 +398,7 @@ export async function purgeItem(collection: string, itemId: string): Promise<voi
     }
   }
 
-  await Model.findByIdAndDelete(itemId);
+  await Model.deleteOne({ _id: itemId });
 
   logger.info(`[SoftDelete] Purged ${collection}/${itemId}`);
 }
@@ -451,10 +451,9 @@ export async function getTrashItems(filters: TrashFilter): Promise<TrashResult[]
   ): Promise<Map<string, AnyRecord>> => {
     if (ids.length === 0) return new Map();
     const unique = [...new Set(ids.map((id) => id.toString()))];
-    const users = await User.find(
-      { _id: { $in: unique }, isDeleted: { $in: [true, false] } },
-      fields
-    ).lean();
+    const users = await User.find({ _id: { $in: unique } }, fields)
+      .setOptions({ includeDeleted: true })
+      .lean();
     return new Map((users as unknown as AnyRecord[]).map((u) => [(u._id as any).toString(), u]));
   };
 
@@ -728,4 +727,137 @@ export async function softDeleteReport(
   }
 
   await Report.findByIdAndUpdate(reportId, { $set: buildSoftDeletePayload(deletedBy) });
+}
+
+// =============================================
+// USER TRASH — Scoped to owner (User/Store)
+// =============================================
+
+export type UserTrashCollection = 'posts' | 'reviews' | 'vouchers';
+
+const USER_OWNER_FIELD: Record<UserTrashCollection, string> = {
+  posts: 'ownerId',
+  reviews: 'reviewerId',
+  vouchers: 'creatorId',
+};
+
+export interface UserTrashResult {
+  collection: UserTrashCollection;
+  data: AnyRecord[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export async function getMyTrashItems(
+  ownerId: string,
+  collection: UserTrashCollection | undefined,
+  page = 1,
+  limit = 20
+): Promise<UserTrashResult[]> {
+  if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+    throw new SoftDeleteError('User ID không hợp lệ', 400);
+  }
+
+  const clampedLimit = Math.min(Math.max(limit, 1), 100);
+  const skip = (page - 1) * clampedLimit;
+
+  const collections: UserTrashCollection[] = collection
+    ? [collection]
+    : ['posts', 'reviews', 'vouchers'];
+
+  const results = await Promise.all(
+    collections.map(async (col) => {
+      const ownerField = USER_OWNER_FIELD[col];
+      const filter = { isDeleted: true, [ownerField]: new mongoose.Types.ObjectId(ownerId) };
+
+      let Model: typeof Post | typeof Review | typeof Voucher;
+      if (col === 'posts') Model = Post;
+      else if (col === 'reviews') Model = Review;
+      else Model = Voucher;
+
+      const [rawData, total] = await Promise.all([
+        (Model as any).find(filter).sort({ deletedAt: -1 }).skip(skip).limit(clampedLimit).lean(),
+        (Model as any).countDocuments(filter),
+      ]);
+
+      return {
+        collection: col,
+        data: rawData as AnyRecord[],
+        pagination: {
+          page,
+          limit: clampedLimit,
+          total,
+          totalPages: Math.ceil(total / clampedLimit),
+        },
+      };
+    })
+  );
+
+  return results;
+}
+
+export async function restoreItemByOwner(
+  collection: UserTrashCollection,
+  itemId: string,
+  ownerId: string
+): Promise<void> {
+  if (!mongoose.Types.ObjectId.isValid(itemId)) {
+    throw new SoftDeleteError('ID không hợp lệ', 400);
+  }
+
+  const ownerField = USER_OWNER_FIELD[collection];
+  let Model: typeof Post | typeof Review | typeof Voucher;
+  if (collection === 'posts') Model = Post;
+  else if (collection === 'reviews') Model = Review;
+  else Model = Voucher;
+
+  const item = await (Model as any).findOne({
+    _id: itemId,
+    isDeleted: true,
+    [ownerField]: new mongoose.Types.ObjectId(ownerId),
+  });
+
+  if (!item) {
+    throw new SoftDeleteError('Không tìm thấy dữ liệu hoặc bạn không có quyền khôi phục', 404);
+  }
+
+  await (Model as any).updateOne(
+    { _id: itemId },
+    { $set: { isDeleted: false }, $unset: { deletedAt: '', deletedBy: '' } },
+  );
+
+  logger.info(`[UserTrash] Restored ${collection}/${itemId} by owner ${ownerId}`);
+}
+
+export async function purgeItemByOwner(
+  collection: UserTrashCollection,
+  itemId: string,
+  ownerId: string
+): Promise<void> {
+  if (!mongoose.Types.ObjectId.isValid(itemId)) {
+    throw new SoftDeleteError('ID không hợp lệ', 400);
+  }
+
+  const ownerField = USER_OWNER_FIELD[collection];
+  let Model: typeof Post | typeof Review | typeof Voucher;
+  if (collection === 'posts') Model = Post;
+  else if (collection === 'reviews') Model = Review;
+  else Model = Voucher;
+
+  const item = await (Model as any).findOne({
+    _id: itemId,
+    isDeleted: true,
+    [ownerField]: new mongoose.Types.ObjectId(ownerId),
+  });
+
+  if (!item) {
+    throw new SoftDeleteError('Không tìm thấy dữ liệu hoặc bạn không có quyền xóa', 404);
+  }
+
+  if (collection === 'posts' && item.images?.length > 0) {
+    deleteMultipleImagesByUrl(item.images).catch(() => {});
+  }
+
+  await (Model as any).deleteOne({ _id: itemId });
+
+  logger.info(`[UserTrash] Purged ${collection}/${itemId} by owner ${ownerId}`);
 }
