@@ -6,7 +6,6 @@ import {
   getPostTransactions,
   respondToRequest,
   createOrder,
-  processPayment,
   scanQrAndComplete,
   getMyTransactions,
   cancelOrderByStore,
@@ -364,7 +363,7 @@ describe('respondToRequest', () => {
     expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
       expect.objectContaining({
         success: true,
-        data: expect.objectContaining({ qrCode: expect.any(String) }),
+        data: expect.objectContaining({ verificationCode: expect.any(String) }),
       })
     );
   });
@@ -571,95 +570,6 @@ describe('createOrder', () => {
 
     expect(postDoc.status).toBe('OUT_OF_STOCK');
     expect(postDoc.remainingQuantity).toBe(0);
-  });
-});
-
-// =============================================
-// TRX_F08, TRX_F09: processPayment
-// =============================================
-describe('processPayment', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('processes payment successfully and generates QR', async () => {
-    const req = createAuthRequest({ params: { id: TXN_ID } });
-    const res = createResponse();
-
-    const save = jest.fn().mockResolvedValue(undefined);
-    mockedTransaction.findOne.mockResolvedValue({
-      _id: TXN_ID,
-      requesterId: REQUESTER_ID,
-      status: 'PENDING',
-      expiredAt: new Date(Date.now() + 5 * 60 * 1000), // 5 min from now
-      save,
-    });
-
-    await processPayment(req, res);
-
-    expect(save).toHaveBeenCalled();
-    expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
-    expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: true,
-        qrCode: expect.any(String),
-      })
-    );
-  });
-
-  it('returns 404 when order not found', async () => {
-    const req = createAuthRequest({ params: { id: TXN_ID } });
-    const res = createResponse();
-
-    mockedTransaction.findOne.mockResolvedValue(null);
-
-    await processPayment(req, res);
-
-    expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(404);
-  });
-
-  it('returns 400 when order is already processed', async () => {
-    const req = createAuthRequest({ params: { id: TXN_ID } });
-    const res = createResponse();
-
-    mockedTransaction.findOne.mockResolvedValue({
-      _id: TXN_ID,
-      status: 'ESCROWED', // Already paid
-    });
-
-    await processPayment(req, res);
-
-    expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(400);
-  });
-
-  it('cancels order and restores inventory when expired (Lazy Check)', async () => {
-    const req = createAuthRequest({ params: { id: TXN_ID } });
-    const res = createResponse();
-
-    const txnSave = jest.fn().mockResolvedValue(undefined);
-    const postSave = jest.fn().mockResolvedValue(undefined);
-
-    mockedTransaction.findOne.mockResolvedValue({
-      _id: TXN_ID,
-      postId: POST_ID,
-      status: 'PENDING',
-      quantity: 2,
-      expiredAt: new Date(Date.now() - 1000), // Already expired
-      save: txnSave,
-    });
-    mockedPost.findById.mockResolvedValue({
-      _id: POST_ID,
-      remainingQuantity: 0,
-      status: 'OUT_OF_STOCK',
-      save: postSave,
-    });
-
-    await processPayment(req, res);
-
-    expect(txnSave).toHaveBeenCalled();
-    expect(postSave).toHaveBeenCalled();
-    expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(400);
-    expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false })
-    );
   });
 });
 

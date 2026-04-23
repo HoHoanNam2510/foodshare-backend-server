@@ -464,9 +464,9 @@ async function executePenalty(
       if (!transaction) {
         throw new ReportServiceError('Giao dịch mục tiêu không tồn tại', 404);
       }
-      if (transaction.status !== 'ESCROWED') {
+      if (transaction.status !== 'ACCEPTED') {
         throw new ReportServiceError(
-          'Chỉ có thể hoàn tiền cho giao dịch đang ở trạng thái ESCROWED',
+          'Chỉ có thể hoàn tiền cho giao dịch đang ở trạng thái ACCEPTED',
           400
         );
       }

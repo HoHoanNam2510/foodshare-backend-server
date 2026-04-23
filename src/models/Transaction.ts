@@ -6,24 +6,11 @@ export interface ITransaction extends Document {
   ownerId: mongoose.Types.ObjectId;
   type: 'REQUEST' | 'ORDER';
   quantity: number;
-  status:
-    | 'PENDING'
-    | 'ACCEPTED'
-    | 'REJECTED'
-    | 'ESCROWED'
-    | 'COMPLETED'
-    | 'CANCELLED'
-    | 'REFUNDED'
-    | 'DISPUTED';
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED';
   paymentMethod: 'FREE' | 'BANK_TRANSFER';
-  paymentTransId?: string;
   totalAmount?: number;
   verificationCode?: string;
-  expiredAt?: Date;
-  pickupDeadline?: Date;
-  refundReason?: string;
-  refundedAt?: Date;
-  disputeReason?: string;
+  paymentQR?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,16 +31,7 @@ const TransactionSchema = new Schema<ITransaction>(
 
     status: {
       type: String,
-      enum: [
-        'PENDING',
-        'ACCEPTED',
-        'REJECTED',
-        'ESCROWED',
-        'COMPLETED',
-        'CANCELLED',
-        'REFUNDED',
-        'DISPUTED',
-      ],
+      enum: ['PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED'],
       default: 'PENDING',
     },
 
@@ -73,26 +51,14 @@ const TransactionSchema = new Schema<ITransaction>(
       },
     },
 
-    // Nội dung chuyển khoản (order reference gửi trong nội dung CK)
-    paymentTransId: { type: String },
-
     // Tổng tiền thanh toán (price * quantity) — lưu snapshot tại thời điểm đặt hàng
     totalAmount: { type: Number, min: 0 },
 
-    // Mã xác minh QR — sinh khi transaction được ACCEPTED (P2P) hoặc ESCROWED (B2C); sparse để tránh lỗi unique khi null
+    // Mã xác minh QR — sinh khi P2P REQUEST được ACCEPTED; sparse để tránh lỗi unique khi null
     verificationCode: { type: String, unique: true, sparse: true },
 
-    expiredAt: { type: Date },
-
-    // Hạn nhận hàng — sau thanh toán thành công (mặc định: closeHours của store hoặc 24h)
-    pickupDeadline: { type: Date },
-
-    // Thông tin hoàn tiền
-    refundReason: { type: String },
-    refundedAt: { type: Date },
-
-    // Thông tin khiếu nại
-    disputeReason: { type: String },
+    // VietQR image (base64) — sinh khi store ACCEPT một B2C ORDER
+    paymentQR: { type: String },
   },
   { timestamps: true }
 );
@@ -103,9 +69,6 @@ TransactionSchema.index({ requesterId: 1, createdAt: -1 });
 
 // 2. Dùng khi chủ post/store xem "Danh sách ai đang xin/mua bài đăng này"
 TransactionSchema.index({ postId: 1, status: 1 });
-
-// CẢNH BÁO VỀ TTL INDEX:
-// Không dùng index: { expires: 0 } ở field expiredAt nếu bạn muốn giữ lại lịch sử giao dịch.
 
 const Transaction: Model<ITransaction> =
   mongoose.models.Transaction ||

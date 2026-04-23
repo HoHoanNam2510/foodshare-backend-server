@@ -1,13 +1,15 @@
-/** Tham số sinh mã QR VietQR */
+/** Tham số sinh mã QR VietQR — caller tự truyền thông tin tài khoản ngân hàng */
 export interface GenerateQRParams {
+  bankCode: string;
+  bankAccountNumber: string;
+  bankAccountName: string;
   amount: number;
-  description: string; // Nội dung chuyển khoản (mã đơn hàng)
+  description: string;
 }
 
 /** Kết quả sinh QR — trả về ảnh QR và thông tin tài khoản */
 export interface GenerateQRResult {
-  qrDataURL: string;     // Base64 data URL của ảnh QR (data:image/png;base64,...)
-  bankName: string;
+  qrDataURL: string;
   bankAccountNumber: string;
   bankAccountName: string;
   amount: number;
