@@ -22,17 +22,30 @@ function getSmtpConfig(): {
   const from = process.env.SMTP_FROM;
 
   if (!host || !user || !pass || !from) {
-    throw new Error('SMTP configuration is missing. Please set SMTP_* env vars.');
+    throw new Error(
+      'SMTP configuration is missing. Please set SMTP_* env vars.'
+    );
   }
 
-  return {
-    host,
-    port,
-    secure,
-    user,
-    pass,
-    from,
-  };
+  return { host, port, secure, user, pass, from };
+}
+
+// Singleton pooled transporter — reuses SMTP connection across calls
+let _transporter: nodemailer.Transporter | null = null;
+
+export function getTransporter(): nodemailer.Transporter {
+  if (!_transporter) {
+    const cfg = getSmtpConfig();
+    _transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: { user: cfg.user, pass: cfg.pass },
+      pool: true,
+      maxConnections: 5,
+    });
+  }
+  return _transporter;
 }
 
 export async function sendPostPasscodeEmail({
@@ -40,20 +53,11 @@ export async function sendPostPasscodeEmail({
   passcode,
   expiresInMinutes,
 }: SendPostPasscodeEmailParams): Promise<void> {
-  const smtpConfig = getSmtpConfig();
-
-  const transporter = nodemailer.createTransport({
-    host: smtpConfig.host,
-    port: smtpConfig.port,
-    secure: smtpConfig.secure,
-    auth: {
-      user: smtpConfig.user,
-      pass: smtpConfig.pass,
-    },
-  });
+  const cfg = getSmtpConfig();
+  const transporter = getTransporter();
 
   await transporter.sendMail({
-    from: smtpConfig.from,
+    from: cfg.from,
     to: email,
     subject: 'FoodShare - Ma passcode tao bai dang',
     text: `Ma passcode cua ban la ${passcode}. Ma co hieu luc trong ${expiresInMinutes} phut.`,

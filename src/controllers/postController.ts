@@ -7,6 +7,7 @@ import User from '@/models/User';
 import { deleteMultipleImagesByUrl } from '@/services/uploadService';
 import { softDeletePost, SoftDeleteError } from '@/services/softDeleteService';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
+import logger from '@/utils/logger';
 import { runAIModerationJob, getAdminPostList } from '@/services/postService';
 import { checkAndAwardBadges } from '@/services/badgeService';
 
@@ -117,26 +118,24 @@ export const sendCreatePostPasscode = async (
       expiresAt,
     });
 
-    try {
-      // Gửi passcode qua email cho tất cả user (cả LOCAL lẫn GOOGLE)
-      await sendPostPasscodeEmail({
-        email: user.email,
-        passcode,
-        expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
-      });
-    } catch (sendError) {
-      await PostCreationPasscode.findByIdAndDelete(passcodeDoc._id);
-      throw sendError;
-    }
-
-    const deliveryMethod = 'email';
+    // Gửi email non-blocking — response trả về ngay sau khi lưu DB
+    sendPostPasscodeEmail({
+      email: user.email,
+      passcode,
+      expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
+    }).catch((sendError: unknown) =>
+      logger.error('[PostController] sendPostPasscodeEmail failed', {
+        userId: ownerId,
+        error: sendError instanceof Error ? sendError.message : sendError,
+      })
+    );
 
     res.status(200).json({
       success: true,
-      message: `Đã gửi passcode xác thực tạo bài đăng qua ${deliveryMethod}`,
+      message: 'Đã gửi passcode xác thực tạo bài đăng qua email',
       data: {
         expiresInMinutes: POST_PASSCODE_EXPIRE_MINUTES,
-        deliveryMethod,
+        deliveryMethod: 'email',
       },
     });
   } catch (error: unknown) {
@@ -417,7 +416,9 @@ export const deletePost = async (
   res: Response
 ): Promise<void> => {
   try {
-    const postId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const postId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
     const ownerId = req.user?.id;
 
     if (!ownerId) {
