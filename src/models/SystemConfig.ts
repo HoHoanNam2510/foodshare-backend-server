@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export type GracePeriodDays = 7 | 30;
 export type CleanupSchedule = 'WEEKLY' | 'MONTHLY' | 'BOTH';
+export type AIModerationInterval = 1 | 2 | 6 | 12 | 24;
 
 export interface ISoftDeleteConfig {
   gracePeriodDays: GracePeriodDays;
@@ -10,12 +11,29 @@ export interface ISoftDeleteConfig {
   lastCleanupCount?: number;
 }
 
+export interface IAIModerationConfig {
+  enabled: boolean;
+  intervalHours: AIModerationInterval;
+  trustScoreThresholds: {
+    reject: number;
+    approve: number;
+  };
+  lastRunAt?: Date;
+  lastRunStats?: {
+    processed: number;
+    approved: number;
+    rejected: number;
+    pendingManual: number;
+  };
+}
+
 export interface ISystemConfig extends Document {
   systemBankName: string;
   systemBankCode: string;
   systemBankAccountNumber: string;
   systemBankAccountName: string;
   softDelete: ISoftDeleteConfig;
+  aiModeration?: IAIModerationConfig;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +59,26 @@ const SystemConfigSchema = new Schema<ISystemConfig>(
       },
       lastCleanupAt: { type: Date },
       lastCleanupCount: { type: Number, default: 0 },
+    },
+
+    aiModeration: {
+      enabled: { type: Boolean, default: false },
+      intervalHours: {
+        type: Number,
+        enum: [1, 2, 6, 12, 24],
+        default: 6,
+      },
+      trustScoreThresholds: {
+        reject: { type: Number, default: 50 },
+        approve: { type: Number, default: 70 },
+      },
+      lastRunAt: { type: Date },
+      lastRunStats: {
+        processed: { type: Number, default: 0 },
+        approved: { type: Number, default: 0 },
+        rejected: { type: Number, default: 0 },
+        pendingManual: { type: Number, default: 0 },
+      },
     },
   },
   { timestamps: true }

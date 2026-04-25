@@ -282,10 +282,10 @@ export const createPost = async (
       console.warn('[PostController] badge check (POST_CREATED) failed:', err);
     }
 
-    // 7. Background Job — AI Moderation (tạm tắt — sẽ bật lại khi có quota Gemini)
-    // runAIModerationJob(String(newPost._id)).catch((err) => {
-    //   console.error('Background AI moderation failed:', err);
-    // });
+    // 7. Background Job — AI Moderation (không block response)
+    runAIModerationJob(String(newPost._id), 'ON_CREATE').catch((err) => {
+      console.error('Background AI moderation failed:', err);
+    });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
 
@@ -398,7 +398,7 @@ export const updatePost = async (
 
     // Nếu sửa trường nhạy cảm, kích hoạt lại AI moderation
     if (hasSensitiveChange && updatedPost) {
-      runAIModerationJob(String(updatedPost._id)).catch((err) => {
+      runAIModerationJob(String(updatedPost._id), 'ON_UPDATE').catch((err) => {
         console.error('Background AI re-moderation failed:', err);
       });
     }

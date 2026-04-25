@@ -85,7 +85,7 @@ const mockedUser = User as unknown as {
 };
 
 const mockedSendPostPasscodeEmail = sendPostPasscodeEmail as jest.Mock;
-const mockedPostService = postService as {
+const mockedPostService = postService as unknown as {
   runAIModerationJob: jest.Mock;
   getAdminPostList: jest.Mock;
 };
@@ -99,7 +99,7 @@ function createResponse(): Response {
 }
 
 function createAuthRequest(
-  overrides: Partial<Request> & { user?: { id: string; role: string } } = {},
+  overrides: Partial<Request> & { user?: { id: string; role: string } } = {}
 ): Request {
   return {
     user: { id: '507f191e810c19729de860ea', role: 'USER' },
@@ -140,10 +140,10 @@ describe('sendCreatePostPasscode', () => {
       expect.objectContaining({
         userId: '507f191e810c19729de860ea',
         code: expect.stringMatching(/^\d{6}$/),
-      }),
+      })
     );
     expect(mockedSendPostPasscodeEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'user@example.com' }),
+      expect.objectContaining({ email: 'user@example.com' })
     );
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
   });
@@ -197,7 +197,7 @@ describe('sendCreatePostPasscode', () => {
     await sendCreatePostPasscode(req, res);
 
     expect(mockedPasscodeModel.findByIdAndDelete).toHaveBeenCalledWith(
-      'passcode-doc-id',
+      'passcode-doc-id'
     );
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(500);
   });
@@ -245,7 +245,7 @@ describe('createPost', () => {
     expect(save).toHaveBeenCalled();
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(201);
     expect(mockedPostService.runAIModerationJob).toHaveBeenCalledWith(
-      'post-id-1',
+      'post-id-1'
     );
   });
 
@@ -298,7 +298,7 @@ describe('createPost', () => {
       expect.objectContaining({
         success: false,
         message: 'Passcode không hợp lệ hoặc đã hết hạn',
-      }),
+      })
     );
   });
 
@@ -317,7 +317,7 @@ describe('createPost', () => {
     await createPost(req, res);
 
     expect(mockedPost.create).toHaveBeenCalledWith(
-      expect.objectContaining({ price: 0 }),
+      expect.objectContaining({ price: 0 })
     );
   });
 });
@@ -344,7 +344,7 @@ describe('getMyPosts', () => {
     });
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
     expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
-      expect.objectContaining({ success: true, data: mockPosts }),
+      expect.objectContaining({ success: true, data: mockPosts })
     );
   });
 });
@@ -391,7 +391,7 @@ describe('updatePost', () => {
 
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
     expect(mockedPostService.runAIModerationJob).toHaveBeenCalledWith(
-      '507f191e810c19729de860eb',
+      '507f191e810c19729de860eb'
     );
   });
 
@@ -422,7 +422,9 @@ describe('deletePost', () => {
     });
     const res = createResponse();
 
-    mockedPost.findOneAndDelete.mockResolvedValue({ _id: '507f191e810c19729de860eb' });
+    mockedPost.findOneAndDelete.mockResolvedValue({
+      _id: '507f191e810c19729de860eb',
+    });
 
     await deletePost(req, res);
 
@@ -432,7 +434,7 @@ describe('deletePost', () => {
     });
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
     expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
-      expect.objectContaining({ success: true }),
+      expect.objectContaining({ success: true })
     );
   });
 
@@ -476,7 +478,7 @@ describe('getPostDetail', () => {
 
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
     expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
-      expect.objectContaining({ success: true, data: mockPost }),
+      expect.objectContaining({ success: true, data: mockPost })
     );
   });
 
@@ -573,7 +575,7 @@ describe('searchMapPosts', () => {
     await searchMapPosts(req, res);
 
     expect(mockedPost.find).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'AVAILABLE' }),
+      expect.objectContaining({ status: 'AVAILABLE' })
     );
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
   });
@@ -613,14 +615,14 @@ describe('adminGetPosts', () => {
     await adminGetPosts(req, res);
 
     expect(mockedPostService.getAdminPostList).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'PENDING_REVIEW', page: 1, limit: 10 }),
+      expect.objectContaining({ status: 'PENDING_REVIEW', page: 1, limit: 10 })
     );
     expect(res.status as unknown as jest.Mock).toHaveBeenCalledWith(200);
     expect(res.json as unknown as jest.Mock).toHaveBeenCalledWith(
       expect.objectContaining({
         success: true,
         pagination: mockResult.pagination,
-      }),
+      })
     );
   });
 });
