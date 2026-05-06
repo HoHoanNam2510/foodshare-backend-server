@@ -10,7 +10,9 @@ import {
 
 function handleError(error: unknown, res: Response): void {
   if (error instanceof SoftDeleteError) {
-    res.status(error.statusCode).json({ success: false, message: error.message });
+    res
+      .status(error.statusCode)
+      .json({ success: false, message: error.message });
     return;
   }
   const message = error instanceof Error ? error.message : 'Lỗi không xác định';
@@ -29,7 +31,11 @@ export async function getMyTrash(req: Request, res: Response): Promise<void> {
 
     if (collection) {
       const single = results[0];
-      res.json({ success: true, data: single.data, pagination: single.pagination });
+      res.json({
+        success: true,
+        data: single.data,
+        pagination: single.pagination,
+      });
     } else {
       res.json({ success: true, data: results });
     }
@@ -39,10 +45,16 @@ export async function getMyTrash(req: Request, res: Response): Promise<void> {
 }
 
 // [POST] /api/auth/me/trash/restore/:collection/:id
-export async function restoreMyItem(req: Request, res: Response): Promise<void> {
+export async function restoreMyItem(
+  req: Request,
+  res: Response
+): Promise<void> {
   try {
     const ownerId = req.user!.id;
-    const { collection, id } = req.params as { collection: UserTrashCollection; id: string };
+    const { collection, id } = req.params as {
+      collection: UserTrashCollection;
+      id: string;
+    };
 
     await restoreItemByOwner(collection, id, ownerId);
 
@@ -56,7 +68,10 @@ export async function restoreMyItem(req: Request, res: Response): Promise<void> 
 export async function purgeMyItem(req: Request, res: Response): Promise<void> {
   try {
     const ownerId = req.user!.id;
-    const { collection, id } = req.params as { collection: UserTrashCollection; id: string };
+    const { collection, id } = req.params as {
+      collection: UserTrashCollection;
+      id: string;
+    };
 
     await purgeItemByOwner(collection, id, ownerId);
 

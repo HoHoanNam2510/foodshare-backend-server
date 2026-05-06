@@ -41,6 +41,11 @@ router.post('/admin', verifyAuth, verifyAdmin, adminCreateBadgeHandler);
 router.put('/admin/:badgeId', verifyAuth, verifyAdmin, adminUpdateBadgeHandler);
 
 // PATCH /api/badges/admin/:badgeId/toggle — Admin bật/tắt huy hiệu
-router.patch('/admin/:badgeId/toggle', verifyAuth, verifyAdmin, adminToggleBadgeHandler);
+router.patch(
+  '/admin/:badgeId/toggle',
+  verifyAuth,
+  verifyAdmin,
+  adminToggleBadgeHandler
+);
 
 export default router;

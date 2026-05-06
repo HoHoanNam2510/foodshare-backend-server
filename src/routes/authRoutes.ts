@@ -44,13 +44,25 @@ import {
 const router = Router();
 
 // [POST] /api/auth/register/send-code  (Bước 1: validate + gửi mã)
-router.post('/register/send-code', validateBody(registerSchema), registerSendCode);
+router.post(
+  '/register/send-code',
+  validateBody(registerSchema),
+  registerSendCode
+);
 
 // [POST] /api/auth/register/verify     (Bước 2: xác minh mã + tạo account)
-router.post('/register/verify', validateBody(registerVerifySchema), registerVerify);
+router.post(
+  '/register/verify',
+  validateBody(registerVerifySchema),
+  registerVerify
+);
 
 // [POST] /api/auth/register/verify-code  (Chỉ xác minh mã, không tạo account — dùng cho admin)
-router.post('/register/verify-code', validateBody(verifyCodeOnlySchema), verifyCodeOnly);
+router.post(
+  '/register/verify-code',
+  validateBody(verifyCodeOnlySchema),
+  verifyCodeOnly
+);
 
 // [POST] /api/auth/login
 router.post('/login', validateBody(loginSchema), login);

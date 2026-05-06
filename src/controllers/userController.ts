@@ -106,10 +106,7 @@ export const updateUser = async (
   }
 };
 
-export const reviewKyc = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const reviewKyc = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = getParamAsString(req.params.id);
     const { action, rejectionReason } = req.body;
@@ -131,7 +128,10 @@ export const reviewKyc = async (
       try {
         await checkAndAwardBadges(id, 'KYC_APPROVED');
       } catch (err) {
-        console.warn('[UserController] badge check (KYC_APPROVED) failed:', err);
+        console.warn(
+          '[UserController] badge check (KYC_APPROVED) failed:',
+          err
+        );
       }
     }
   } catch (error: unknown) {

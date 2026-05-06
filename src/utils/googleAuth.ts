@@ -19,7 +19,9 @@ function getGoogleClientIds(): string[] {
     .filter(Boolean);
 
   if (clientIds.length === 0) {
-    throw new Error('Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_IDS in environment');
+    throw new Error(
+      'Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_IDS in environment'
+    );
   }
 
   return clientIds;

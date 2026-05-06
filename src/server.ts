@@ -126,7 +126,10 @@ mongoose
 io.use((socket, next) => {
   const token =
     (socket.handshake.auth as { token?: string }).token ||
-    (socket.handshake.headers.authorization as string | undefined)?.replace('Bearer ', '');
+    (socket.handshake.headers.authorization as string | undefined)?.replace(
+      'Bearer ',
+      ''
+    );
 
   if (token) {
     try {
@@ -163,9 +166,12 @@ io.on('connection', (socket) => {
 
   // Client gửi tin nhắn (sau khi đã lưu vào DB qua REST API)
   // Server chỉ broadcast lại cho tất cả client trong phòng
-  socket.on('client-message', (data: { conversationId: string; message: unknown }) => {
-    io.to(data.conversationId).emit('new-message', data.message);
-  });
+  socket.on(
+    'client-message',
+    (data: { conversationId: string; message: unknown }) => {
+      io.to(data.conversationId).emit('new-message', data.message);
+    }
+  );
 
   socket.on('disconnect', () => {
     logger.info(`❌ Socket ngắt kết nối: ${socket.id}`);

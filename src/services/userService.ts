@@ -375,10 +375,7 @@ export async function reviewKyc(
   }
 
   if (user.kycDocuments.length === 0) {
-    throw new UserServiceError(
-      'Người dùng chưa nộp tài liệu KYC',
-      400
-    );
+    throw new UserServiceError('Người dùng chưa nộp tài liệu KYC', 400);
   }
 
   if (action === 'APPROVE') {
@@ -400,7 +397,10 @@ export async function deleteUser(
   requesterId: string
 ): Promise<Record<string, unknown>> {
   if (id === requesterId) {
-    throw new UserServiceError('Không thể tự xóa tài khoản admin của mình', 403);
+    throw new UserServiceError(
+      'Không thể tự xóa tài khoản admin của mình',
+      403
+    );
   }
 
   const user = await User.findById(id);

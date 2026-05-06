@@ -210,7 +210,9 @@ export const restoreFromTrash = async (
   res: Response
 ): Promise<void> => {
   try {
-    const collection = Array.isArray(req.params.collection) ? req.params.collection[0] : req.params.collection;
+    const collection = Array.isArray(req.params.collection)
+      ? req.params.collection[0]
+      : req.params.collection;
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -239,7 +241,9 @@ export const purgeFromTrash = async (
   res: Response
 ): Promise<void> => {
   try {
-    const collection = Array.isArray(req.params.collection) ? req.params.collection[0] : req.params.collection;
+    const collection = Array.isArray(req.params.collection)
+      ? req.params.collection[0]
+      : req.params.collection;
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {

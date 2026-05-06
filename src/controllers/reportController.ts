@@ -113,14 +113,23 @@ export const updateReport = async (
   try {
     const reporterId = req.user?.id;
     if (!reporterId) {
-      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập để thực hiện thao tác này' });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
-    const reportId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const reportId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
     const { reason, description, images } = req.body;
 
-    const report = await updateReportService(reportId, reporterId, { reason, description, images });
+    const report = await updateReportService(reportId, reporterId, {
+      reason,
+      description,
+      images,
+    });
 
     res.status(200).json({
       success: true,
@@ -143,11 +152,16 @@ export const withdrawReport = async (
   try {
     const reporterId = req.user?.id;
     if (!reporterId) {
-      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập để thực hiện thao tác này' });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
-    const reportId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const reportId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
 
     const report = await withdrawReportService(reportId, reporterId);
 

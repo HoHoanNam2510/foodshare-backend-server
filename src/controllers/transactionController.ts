@@ -122,7 +122,9 @@ export const updateOrDeleteRequest = async (
         res.status(200).json({ success: true, message: 'Đã hủy đơn hàng' });
       } else {
         await transaction.deleteOne();
-        res.status(200).json({ success: true, message: 'Đã hủy yêu cầu xin đồ' });
+        res
+          .status(200)
+          .json({ success: true, message: 'Đã hủy yêu cầu xin đồ' });
       }
       return;
     }
@@ -234,7 +236,7 @@ export const respondToRequest = async (
 
     if (response === 'ACCEPT') {
       const post = await Post.findById(transaction.postId);
-      
+
       // For P2P (REQUEST), we check if there is enough quantity.
       // For B2C (ORDER), quantity was already reserved/deducted during createOrder.
       if (transaction.type === 'REQUEST') {
@@ -475,12 +477,21 @@ export const scanQrAndComplete = async (
     });
 
     try {
-      await checkAndAwardBadges(transaction.requesterId.toString(), 'TRANSACTION_COMPLETED');
+      await checkAndAwardBadges(
+        transaction.requesterId.toString(),
+        'TRANSACTION_COMPLETED'
+      );
     } catch (err) {
-      console.warn('[TransactionController] badge check (requester) failed:', err);
+      console.warn(
+        '[TransactionController] badge check (requester) failed:',
+        err
+      );
     }
     try {
-      await checkAndAwardBadges(transaction.ownerId.toString(), 'TRANSACTION_COMPLETED');
+      await checkAndAwardBadges(
+        transaction.ownerId.toString(),
+        'TRANSACTION_COMPLETED'
+      );
     } catch (err) {
       console.warn('[TransactionController] badge check (owner) failed:', err);
     }
@@ -512,7 +523,8 @@ export const confirmReceiptByStore = async (
     if (!transaction) {
       res.status(404).json({
         success: false,
-        message: 'Không tìm thấy đơn hàng hoặc đơn không ở trạng thái chờ xác nhận',
+        message:
+          'Không tìm thấy đơn hàng hoặc đơn không ở trạng thái chờ xác nhận',
       });
       return;
     }
@@ -557,12 +569,21 @@ export const confirmReceiptByStore = async (
     });
 
     try {
-      await checkAndAwardBadges(transaction.requesterId.toString(), 'TRANSACTION_COMPLETED');
+      await checkAndAwardBadges(
+        transaction.requesterId.toString(),
+        'TRANSACTION_COMPLETED'
+      );
     } catch (err) {
-      console.warn('[TransactionController] badge check (requester) failed:', err);
+      console.warn(
+        '[TransactionController] badge check (requester) failed:',
+        err
+      );
     }
     try {
-      await checkAndAwardBadges(transaction.ownerId.toString(), 'TRANSACTION_COMPLETED');
+      await checkAndAwardBadges(
+        transaction.ownerId.toString(),
+        'TRANSACTION_COMPLETED'
+      );
     } catch (err) {
       console.warn('[TransactionController] badge check (owner) failed:', err);
     }
@@ -584,7 +605,11 @@ export const getMyTransactions = async (
     const requesterId = req.user?.id;
 
     const transactions = await Transaction.find({ requesterId })
-      .populate({ path: 'postId', select: 'title images type price', match: { isDeleted: { $in: [true, false, null] } } })
+      .populate({
+        path: 'postId',
+        select: 'title images type price',
+        match: { isDeleted: { $in: [true, false, null] } },
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, data: transactions });
@@ -606,7 +631,11 @@ export const getMyTransactionsAsOwner = async (
     const ownerId = req.user?.id;
 
     const transactions = await Transaction.find({ ownerId })
-      .populate({ path: 'postId', select: 'title images type price', match: { isDeleted: { $in: [true, false, null] } } })
+      .populate({
+        path: 'postId',
+        select: 'title images type price',
+        match: { isDeleted: { $in: [true, false, null] } },
+      })
       .populate('requesterId', 'fullName avatar averageRating')
       .sort({ createdAt: -1 });
 
@@ -639,7 +668,8 @@ export const cancelOrderByStore = async (
     if (!transaction) {
       res.status(404).json({
         success: false,
-        message: 'Không tìm thấy đơn hàng hoặc đơn không ở trạng thái có thể hủy',
+        message:
+          'Không tìm thấy đơn hàng hoặc đơn không ở trạng thái có thể hủy',
       });
       return;
     }
@@ -688,7 +718,11 @@ export const getTransactionById = async (
       _id: transactionId,
       $or: [{ requesterId: userId }, { ownerId: userId }],
     })
-      .populate({ path: 'postId', select: 'title images type price', match: { isDeleted: { $in: [true, false, null] } } })
+      .populate({
+        path: 'postId',
+        select: 'title images type price',
+        match: { isDeleted: { $in: [true, false, null] } },
+      })
       .populate('requesterId', 'fullName avatar averageRating');
 
     if (!transaction) {
@@ -767,7 +801,13 @@ export const adminForceUpdateStatus = async (
     const transactionId = req.params.id;
     const { status } = req.body;
 
-    const validStatuses = ['PENDING', 'ACCEPTED', 'REJECTED', 'COMPLETED', 'CANCELLED'];
+    const validStatuses = [
+      'PENDING',
+      'ACCEPTED',
+      'REJECTED',
+      'COMPLETED',
+      'CANCELLED',
+    ];
 
     if (!validStatuses.includes(status)) {
       res.status(400).json({
@@ -821,7 +861,9 @@ export const devCompleteTransaction = async (
 
     const transaction = await Transaction.findById(transactionId);
     if (!transaction) {
-      res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch' });
+      res
+        .status(404)
+        .json({ success: false, message: 'Không tìm thấy giao dịch' });
       return;
     }
 
@@ -849,7 +891,9 @@ export const devCompleteTransaction = async (
       transaction.ownerId.toString()
     );
 
-    logger.info('[DEV] Transaction completed without QR scan', { transactionId });
+    logger.info('[DEV] Transaction completed without QR scan', {
+      transactionId,
+    });
 
     res.status(200).json({
       success: true,
@@ -858,17 +902,29 @@ export const devCompleteTransaction = async (
     });
 
     try {
-      await checkAndAwardBadges(transaction.requesterId.toString(), 'TRANSACTION_COMPLETED');
+      await checkAndAwardBadges(
+        transaction.requesterId.toString(),
+        'TRANSACTION_COMPLETED'
+      );
     } catch (err) {
-      console.warn('[TransactionController] badge check (requester) failed:', err);
+      console.warn(
+        '[TransactionController] badge check (requester) failed:',
+        err
+      );
     }
     try {
-      await checkAndAwardBadges(transaction.ownerId.toString(), 'TRANSACTION_COMPLETED');
+      await checkAndAwardBadges(
+        transaction.ownerId.toString(),
+        'TRANSACTION_COMPLETED'
+      );
     } catch (err) {
       console.warn('[TransactionController] badge check (owner) failed:', err);
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-    res.status(500).json({ success: false, message: 'Lỗi server', error: message });
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
   }
 };

@@ -2,7 +2,10 @@ import { z } from 'zod';
 
 const mongoIdSchema = z
   .string()
-  .regex(/^[a-f\d]{24}$/i, 'ID không hợp lệ — phải là MongoDB ObjectId 24 ký tự');
+  .regex(
+    /^[a-f\d]{24}$/i,
+    'ID không hợp lệ — phải là MongoDB ObjectId 24 ký tự'
+  );
 
 export const VALID_COLLECTIONS = [
   'users',

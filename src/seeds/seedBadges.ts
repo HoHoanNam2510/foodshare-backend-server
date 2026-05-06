@@ -78,7 +78,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'GREEN_TREE',
     name: 'Cây Xanh',
-    description: 'Tích lũy đủ 500 Green Points. Một cây xanh vững chãi vì cộng đồng!',
+    description:
+      'Tích lũy đủ 500 Green Points. Một cây xanh vững chãi vì cộng đồng!',
     targetRole: 'BOTH',
     triggerEvent: 'GREENPOINTS_AWARDED',
     pointReward: 50,
@@ -98,7 +99,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'TRUSTED_PARTNER',
     name: 'Đối Tác Tin Cậy',
-    description: 'Duy trì điểm đánh giá trung bình ≥ 4.8 với ít nhất 10 lượt đánh giá.',
+    description:
+      'Duy trì điểm đánh giá trung bình ≥ 4.8 với ít nhất 10 lượt đánh giá.',
     targetRole: 'BOTH',
     triggerEvent: 'REVIEW_RECEIVED',
     pointReward: 60,
@@ -108,7 +110,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'EARLY_BIRD',
     name: 'Chim Sớm',
-    description: 'Đăng ký và hoàn thiện hồ sơ trong vòng 90 ngày đầu ra mắt ứng dụng.',
+    description:
+      'Đăng ký và hoàn thiện hồ sơ trong vòng 90 ngày đầu ra mắt ứng dụng.',
     targetRole: 'BOTH',
     triggerEvent: 'PROFILE_COMPLETED',
     pointReward: 25,
@@ -120,7 +123,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'FIRST_SHARE',
     name: 'Lần Chia Sẻ Đầu Tiên',
-    description: 'Tạo bài đăng chia sẻ thực phẩm miễn phí (P2P) đầu tiên của bạn.',
+    description:
+      'Tạo bài đăng chia sẻ thực phẩm miễn phí (P2P) đầu tiên của bạn.',
     targetRole: 'USER',
     triggerEvent: 'POST_CREATED',
     pointReward: 15,
@@ -140,7 +144,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'FOOD_HERO',
     name: 'Anh Hùng Thực Phẩm',
-    description: 'Tạo đủ 10 bài đăng chia sẻ thực phẩm miễn phí. Cảm ơn vì sự hào phóng của bạn!',
+    description:
+      'Tạo đủ 10 bài đăng chia sẻ thực phẩm miễn phí. Cảm ơn vì sự hào phóng của bạn!',
     targetRole: 'USER',
     triggerEvent: 'POST_CREATED',
     pointReward: 50,
@@ -150,7 +155,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'GENEROUS_SOUL',
     name: 'Tâm Hồn Hào Phóng',
-    description: 'Là người cho trong 20 giao dịch chia sẻ P2P hoàn tất. Bạn thật tuyệt vời!',
+    description:
+      'Là người cho trong 20 giao dịch chia sẻ P2P hoàn tất. Bạn thật tuyệt vời!',
     targetRole: 'USER',
     triggerEvent: 'TRANSACTION_COMPLETED',
     pointReward: 100,
@@ -162,7 +168,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'STORE_PIONEER',
     name: 'Cửa Hàng Tiên Phong',
-    description: 'Xác minh KYC thành công và gia nhập cộng đồng cửa hàng FoodShare.',
+    description:
+      'Xác minh KYC thành công và gia nhập cộng đồng cửa hàng FoodShare.',
     targetRole: 'STORE',
     triggerEvent: 'KYC_APPROVED',
     pointReward: 20,
@@ -172,7 +179,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'MYSTERY_MASTER',
     name: 'Bậc Thầy Mystery Bag',
-    description: 'Bán được 10 mystery bag hoàn tất. Túi bí ẩn của bạn luôn được yêu thích!',
+    description:
+      'Bán được 10 mystery bag hoàn tất. Túi bí ẩn của bạn luôn được yêu thích!',
     targetRole: 'STORE',
     triggerEvent: 'TRANSACTION_COMPLETED',
     pointReward: 50,
@@ -182,7 +190,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'ECO_CHAMPION',
     name: 'Nhà Vô Địch Eco',
-    description: 'Bán được 50 mystery bag hoàn tất. Bạn là chiến binh chống lãng phí thực phẩm!',
+    description:
+      'Bán được 50 mystery bag hoàn tất. Bạn là chiến binh chống lãng phí thực phẩm!',
     targetRole: 'STORE',
     triggerEvent: 'TRANSACTION_COMPLETED',
     pointReward: 100,
@@ -192,7 +201,8 @@ const BADGE_CATALOG: BadgeSeedData[] = [
   {
     code: 'GIVING_STORE',
     name: 'Cửa Hàng Tốt Bụng',
-    description: 'Tạo ít nhất 3 bài đăng chia sẻ miễn phí dù là cửa hàng. Cảm ơn tấm lòng của bạn!',
+    description:
+      'Tạo ít nhất 3 bài đăng chia sẻ miễn phí dù là cửa hàng. Cảm ơn tấm lòng của bạn!',
     targetRole: 'STORE',
     triggerEvent: 'POST_CREATED',
     pointReward: 60,
@@ -205,7 +215,10 @@ const BADGE_CATALOG: BadgeSeedData[] = [
 // UPLOAD HELPERS
 // =============================================
 
-async function uploadBadgeImage(filePath: string, publicId: string): Promise<string> {
+async function uploadBadgeImage(
+  filePath: string,
+  publicId: string
+): Promise<string> {
   return new Promise((resolve, reject) => {
     cloudinary.uploader.upload(
       filePath,
@@ -255,7 +268,9 @@ async function seedBadges() {
     const filePath = path.join(BADGES_DIR, `${badge.imageFile}.png`);
 
     if (!fs.existsSync(filePath)) {
-      console.warn(`⚠️  Không tìm thấy ảnh: ${filePath} — bỏ qua upload, dùng placeholder`);
+      console.warn(
+        `⚠️  Không tìm thấy ảnh: ${filePath} — bỏ qua upload, dùng placeholder`
+      );
       imageUrlMap.set(badge.code, '');
       continue;
     }
@@ -312,7 +327,9 @@ async function seedBadges() {
     }
   }
 
-  console.log(`\n✅ Seed hoàn tất! Tạo mới: ${created} | Cập nhật: ${updated}\n`);
+  console.log(
+    `\n✅ Seed hoàn tất! Tạo mới: ${created} | Cập nhật: ${updated}\n`
+  );
 
   // 4. Hiển thị tổng kết URL
   console.log('📋 Danh sách imageUrl đã seed:\n');

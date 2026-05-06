@@ -59,7 +59,8 @@ router.post('/', verifyAuth, async (req: Request, res: Response) => {
       data: { translations },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Lỗi không xác định';
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
     logger.error(`POST /api/translate — ${message}`);
     res.status(500).json({ success: false, message });
   }

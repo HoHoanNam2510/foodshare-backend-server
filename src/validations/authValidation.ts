@@ -4,7 +4,9 @@ export const registerSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
   password: z.string().min(6, 'Mật khẩu tối thiểu 6 ký tự'),
   fullName: z.string().min(1, 'Họ tên là bắt buộc'),
-  phoneNumber: z.union([z.string().min(8, 'Số điện thoại không hợp lệ'), z.literal('')]).optional(),
+  phoneNumber: z
+    .union([z.string().min(8, 'Số điện thoại không hợp lệ'), z.literal('')])
+    .optional(),
   defaultAddress: z.string().min(5, 'Địa chỉ mặc định không hợp lệ').optional(),
 });
 
@@ -51,9 +53,7 @@ export const registerStoreSchema = z.object({
     description: z.string().optional(),
     businessAddress: z.string().min(1, 'Địa chỉ cửa hàng là bắt buộc'),
   }),
-  kycDocuments: z
-    .array(z.string().min(1))
-    .min(1, 'Cần ít nhất 1 tài liệu KYC'),
+  kycDocuments: z.array(z.string().min(1)).min(1, 'Cần ít nhất 1 tài liệu KYC'),
   paymentInfo: paymentInfoSchema.optional(),
 });
 

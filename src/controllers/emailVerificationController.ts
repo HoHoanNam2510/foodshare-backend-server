@@ -69,9 +69,7 @@ export const sendEmailVerificationCode = async (
     }
 
     const code = generateNumericCode(CODE_LENGTH);
-    const expiresAt = new Date(
-      Date.now() + CODE_EXPIRE_MINUTES * 60 * 1000
-    );
+    const expiresAt = new Date(Date.now() + CODE_EXPIRE_MINUTES * 60 * 1000);
 
     // Vô hiệu các mã cũ
     await EmailVerificationCode.updateMany(

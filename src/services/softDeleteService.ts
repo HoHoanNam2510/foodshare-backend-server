@@ -178,7 +178,9 @@ export async function softDeletePost(
     );
   }
 
-  await Post.findByIdAndUpdate(postId, { $set: buildSoftDeletePayload(deletedBy) });
+  await Post.findByIdAndUpdate(postId, {
+    $set: buildSoftDeletePayload(deletedBy),
+  });
 }
 
 // =============================================
@@ -210,7 +212,9 @@ export async function softDeleteReview(
 
   const revieweeId = review.revieweeId.toString();
 
-  await Review.findByIdAndUpdate(reviewId, { $set: buildSoftDeletePayload(deletedBy) });
+  await Review.findByIdAndUpdate(reviewId, {
+    $set: buildSoftDeletePayload(deletedBy),
+  });
 
   // Tính lại averageRating — không tính review vừa bị xóa
   await recalculateAverageRatingExcluding(revieweeId, reviewId);
@@ -240,7 +244,8 @@ async function recalculateAverageRatingExcluding(
     },
   ]);
 
-  const newAverage = result.length > 0 ? Math.round(result[0].averageRating * 10) / 10 : 5.0;
+  const newAverage =
+    result.length > 0 ? Math.round(result[0].averageRating * 10) / 10 : 5.0;
 
   await User.findByIdAndUpdate(revieweeId, { averageRating: newAverage });
 }
@@ -305,7 +310,10 @@ export async function softDeleteConversation(
     requestorId &&
     !conversation.participants.map((p) => p.toString()).includes(requestorId)
   ) {
-    throw new SoftDeleteError('Bạn không phải thành viên của cuộc trò chuyện này', 403);
+    throw new SoftDeleteError(
+      'Bạn không phải thành viên của cuộc trò chuyện này',
+      403
+    );
   }
 
   if (conversation.isDeleted) {
@@ -372,7 +380,10 @@ export async function restoreItem(
 // PURGE — Permanent delete (Admin only)
 // =============================================
 
-export async function purgeItem(collection: string, itemId: string): Promise<void> {
+export async function purgeItem(
+  collection: string,
+  itemId: string
+): Promise<void> {
   if (!isValidCollection(collection)) {
     throw new SoftDeleteError(
       `Collection không hợp lệ. Hợp lệ: ${VALID_COLLECTIONS.join(', ')}`,
@@ -424,7 +435,9 @@ export interface TrashResult {
   totalPages: number;
 }
 
-export async function getTrashItems(filters: TrashFilter): Promise<TrashResult[]> {
+export async function getTrashItems(
+  filters: TrashFilter
+): Promise<TrashResult[]> {
   const { collection, page = 1, limit = 20, from, to } = filters;
 
   const dateFilter: Record<string, unknown> = {};
@@ -454,7 +467,12 @@ export async function getTrashItems(filters: TrashFilter): Promise<TrashResult[]
     const users = await User.find({ _id: { $in: unique } }, fields)
       .setOptions({ includeDeleted: true })
       .lean();
-    return new Map((users as unknown as AnyRecord[]).map((u) => [(u._id as any).toString(), u]));
+    return new Map(
+      (users as unknown as AnyRecord[]).map((u) => [
+        (u._id as any).toString(),
+        u,
+      ])
+    );
   };
 
   const results: TrashResult[] = await Promise.all(
@@ -462,7 +480,11 @@ export async function getTrashItems(filters: TrashFilter): Promise<TrashResult[]
       const Model = COLLECTION_MAP[col] as any;
 
       const [rawData, total] = await Promise.all([
-        Model.find(baseFilter).sort({ deletedAt: -1 }).skip(skip).limit(limit).lean(),
+        Model.find(baseFilter)
+          .sort({ deletedAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
         Model.countDocuments(baseFilter),
       ]);
 
@@ -470,8 +492,13 @@ export async function getTrashItems(filters: TrashFilter): Promise<TrashResult[]
       let data = rawData as AnyRecord[];
 
       if (col === 'posts' && data.length > 0) {
-        const ownerIds = data.map((p) => p.ownerId).filter(Boolean) as mongoose.Types.ObjectId[];
-        const ownerMap = await fetchUsersById(ownerIds, 'fullName avatar email');
+        const ownerIds = data
+          .map((p) => p.ownerId)
+          .filter(Boolean) as mongoose.Types.ObjectId[];
+        const ownerMap = await fetchUsersById(
+          ownerIds,
+          'fullName avatar email'
+        );
         data = data.map((p) => ({
           ...p,
           ownerId: ownerMap.get((p.ownerId as any)?.toString()) ?? p.ownerId,
@@ -484,19 +511,32 @@ export async function getTrashItems(filters: TrashFilter): Promise<TrashResult[]
         const userMap = await fetchUsersById(ids, 'fullName avatar email');
         data = data.map((r) => ({
           ...r,
-          reviewerId: userMap.get((r.reviewerId as any)?.toString()) ?? r.reviewerId,
-          revieweeId: userMap.get((r.revieweeId as any)?.toString()) ?? r.revieweeId,
+          reviewerId:
+            userMap.get((r.reviewerId as any)?.toString()) ?? r.reviewerId,
+          revieweeId:
+            userMap.get((r.revieweeId as any)?.toString()) ?? r.revieweeId,
         }));
       } else if (col === 'vouchers' && data.length > 0) {
-        const creatorIds = data.map((v) => v.creatorId).filter(Boolean) as mongoose.Types.ObjectId[];
-        const creatorMap = await fetchUsersById(creatorIds, 'fullName avatar email');
+        const creatorIds = data
+          .map((v) => v.creatorId)
+          .filter(Boolean) as mongoose.Types.ObjectId[];
+        const creatorMap = await fetchUsersById(
+          creatorIds,
+          'fullName avatar email'
+        );
         data = data.map((v) => ({
           ...v,
-          creatorId: creatorMap.get((v.creatorId as any)?.toString()) ?? v.creatorId,
+          creatorId:
+            creatorMap.get((v.creatorId as any)?.toString()) ?? v.creatorId,
         }));
       } else if (col === 'conversations' && data.length > 0) {
-        const allParticipantIds = (data.flatMap((c) => c.participants as mongoose.Types.ObjectId[]) ?? []).filter(Boolean);
-        const participantMap = await fetchUsersById(allParticipantIds, 'fullName avatar email');
+        const allParticipantIds = (
+          data.flatMap((c) => c.participants as mongoose.Types.ObjectId[]) ?? []
+        ).filter(Boolean);
+        const participantMap = await fetchUsersById(
+          allParticipantIds,
+          'fullName avatar email'
+        );
         data = data.map((c) => ({
           ...c,
           participants: ((c.participants as any[]) ?? []).map(
@@ -528,7 +568,9 @@ export interface CleanupResult {
   purgedCount: number;
 }
 
-export async function runCleanup(gracePeriodDays: number): Promise<CleanupResult[]> {
+export async function runCleanup(
+  gracePeriodDays: number
+): Promise<CleanupResult[]> {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - gracePeriodDays);
 
@@ -599,7 +641,9 @@ export async function purgeAllNow(): Promise<CleanupResult[]> {
       const Model = COLLECTION_MAP[col];
 
       if (col === 'posts') {
-        const deletedPosts = await Post.find(allDeletedFilter as any).select('images').lean();
+        const deletedPosts = await Post.find(allDeletedFilter as any)
+          .select('images')
+          .lean();
         for (const post of deletedPosts) {
           if ((post as any).images?.length > 0) {
             deleteMultipleImagesByUrl((post as any).images).catch(() => {});
@@ -726,7 +770,9 @@ export async function softDeleteReport(
     throw new SoftDeleteError('Báo cáo này đã bị xóa', 400);
   }
 
-  await Report.findByIdAndUpdate(reportId, { $set: buildSoftDeletePayload(deletedBy) });
+  await Report.findByIdAndUpdate(reportId, {
+    $set: buildSoftDeletePayload(deletedBy),
+  });
 }
 
 // =============================================
@@ -744,7 +790,12 @@ const USER_OWNER_FIELD: Record<UserTrashCollection, string> = {
 export interface UserTrashResult {
   collection: UserTrashCollection;
   data: AnyRecord[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 export async function getMyTrashItems(
@@ -767,7 +818,10 @@ export async function getMyTrashItems(
   const results = await Promise.all(
     collections.map(async (col) => {
       const ownerField = USER_OWNER_FIELD[col];
-      const filter = { isDeleted: true, [ownerField]: new mongoose.Types.ObjectId(ownerId) };
+      const filter = {
+        isDeleted: true,
+        [ownerField]: new mongoose.Types.ObjectId(ownerId),
+      };
 
       let Model: typeof Post | typeof Review | typeof Voucher;
       if (col === 'posts') Model = Post;
@@ -775,7 +829,12 @@ export async function getMyTrashItems(
       else Model = Voucher;
 
       const [rawData, total] = await Promise.all([
-        (Model as any).find(filter).sort({ deletedAt: -1 }).skip(skip).limit(clampedLimit).lean(),
+        (Model as any)
+          .find(filter)
+          .sort({ deletedAt: -1 })
+          .skip(skip)
+          .limit(clampedLimit)
+          .lean(),
         (Model as any).countDocuments(filter),
       ]);
 
@@ -817,15 +876,20 @@ export async function restoreItemByOwner(
   });
 
   if (!item) {
-    throw new SoftDeleteError('Không tìm thấy dữ liệu hoặc bạn không có quyền khôi phục', 404);
+    throw new SoftDeleteError(
+      'Không tìm thấy dữ liệu hoặc bạn không có quyền khôi phục',
+      404
+    );
   }
 
   await (Model as any).updateOne(
     { _id: itemId },
-    { $set: { isDeleted: false }, $unset: { deletedAt: '', deletedBy: '' } },
+    { $set: { isDeleted: false }, $unset: { deletedAt: '', deletedBy: '' } }
   );
 
-  logger.info(`[UserTrash] Restored ${collection}/${itemId} by owner ${ownerId}`);
+  logger.info(
+    `[UserTrash] Restored ${collection}/${itemId} by owner ${ownerId}`
+  );
 }
 
 export async function purgeItemByOwner(
@@ -850,7 +914,10 @@ export async function purgeItemByOwner(
   });
 
   if (!item) {
-    throw new SoftDeleteError('Không tìm thấy dữ liệu hoặc bạn không có quyền xóa', 404);
+    throw new SoftDeleteError(
+      'Không tìm thấy dữ liệu hoặc bạn không có quyền xóa',
+      404
+    );
   }
 
   if (collection === 'posts' && item.images?.length > 0) {

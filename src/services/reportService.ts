@@ -135,7 +135,10 @@ export async function updateReport(
     throw new ReportServiceError('Không tìm thấy báo cáo', 404);
   }
   if (report.reporterId.toString() !== reporterId) {
-    throw new ReportServiceError('Bạn không có quyền chỉnh sửa báo cáo này', 403);
+    throw new ReportServiceError(
+      'Bạn không có quyền chỉnh sửa báo cáo này',
+      403
+    );
   }
   if (report.status !== 'PENDING') {
     throw new ReportServiceError(

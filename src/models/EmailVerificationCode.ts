@@ -40,10 +40,7 @@ const emailVerificationCodeSchema = new Schema<IEmailVerificationCode>(
 );
 
 emailVerificationCodeSchema.index({ userId: 1, code: 1, expiresAt: -1 });
-emailVerificationCodeSchema.index(
-  { expiresAt: 1 },
-  { expireAfterSeconds: 0 }
-);
+emailVerificationCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const EmailVerificationCode: Model<IEmailVerificationCode> =
   mongoose.models.EmailVerificationCode ||

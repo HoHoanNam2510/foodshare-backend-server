@@ -15,14 +15,35 @@ interface ChartPoint {
 
 interface OverviewStats {
   users: { total: number; active: number; banned: number; pendingKyc: number };
-  posts: { total: number; available: number; pendingReview: number; hidden: number };
-  transactions: { total: number; pending: number; completed: number; disputed: number; totalRevenue: number };
-  reports: { total: number; pending: number; resolved: number; dismissed: number };
+  posts: {
+    total: number;
+    available: number;
+    pendingReview: number;
+    hidden: number;
+  };
+  transactions: {
+    total: number;
+    pending: number;
+    completed: number;
+    disputed: number;
+    totalRevenue: number;
+  };
+  reports: {
+    total: number;
+    pending: number;
+    resolved: number;
+    dismissed: number;
+  };
 }
 
 interface PaginatedResult<T> {
   data: T[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -62,7 +83,9 @@ function getDateRange(
       start,
       end,
       buckets,
-      groupFormat: { $multiply: [{ $floor: { $divide: [{ $hour: '$createdAt' }, 4] } }, 4] },
+      groupFormat: {
+        $multiply: [{ $floor: { $divide: [{ $hour: '$createdAt' }, 4] } }, 4],
+      },
       labelFn: (doc: any) => `${String(doc._id).padStart(2, '0')}:00`,
     };
   }
@@ -78,7 +101,15 @@ function getDateRange(
       buckets,
       groupFormat: { $dayOfWeek: '$createdAt' }, // 1=Sun, 2=Mon, ...
       labelFn: (doc: any) => {
-        const map: Record<number, string> = { 2: 'T2', 3: 'T3', 4: 'T4', 5: 'T5', 6: 'T6', 7: 'T7', 1: 'CN' };
+        const map: Record<number, string> = {
+          2: 'T2',
+          3: 'T3',
+          4: 'T4',
+          5: 'T5',
+          6: 'T6',
+          7: 'T7',
+          1: 'CN',
+        };
         return map[doc._id] || '';
       },
     };
@@ -87,7 +118,11 @@ function getDateRange(
   // month — group by week of month (1-based)
   const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
   const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
-  const daysInMonth = new Date(ref.getFullYear(), ref.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(
+    ref.getFullYear(),
+    ref.getMonth() + 1,
+    0
+  ).getDate();
   const weekCount = Math.ceil(daysInMonth / 7);
   const buckets = Array.from({ length: weekCount }, (_, i) => `Tuần ${i + 1}`);
   return {
@@ -99,8 +134,15 @@ function getDateRange(
   };
 }
 
-async function getGrowthData(model: mongoose.Model<any>, range: TimeRange, anchor?: Date): Promise<ChartPoint[]> {
-  const { start, end, buckets, groupFormat, labelFn } = getDateRange(range, anchor);
+async function getGrowthData(
+  model: mongoose.Model<any>,
+  range: TimeRange,
+  anchor?: Date
+): Promise<ChartPoint[]> {
+  const { start, end, buckets, groupFormat, labelFn } = getDateRange(
+    range,
+    anchor
+  );
 
   const results = await model.aggregate([
     { $match: { createdAt: { $gte: start, $lt: end } } },
@@ -127,7 +169,9 @@ export async function getOverviewStats(): Promise<OverviewStats> {
           total: { $sum: 1 },
           active: { $sum: { $cond: [{ $eq: ['$status', 'ACTIVE'] }, 1, 0] } },
           banned: { $sum: { $cond: [{ $eq: ['$status', 'BANNED'] }, 1, 0] } },
-          pendingKyc: { $sum: { $cond: [{ $eq: ['$status', 'PENDING_KYC'] }, 1, 0] } },
+          pendingKyc: {
+            $sum: { $cond: [{ $eq: ['$status', 'PENDING_KYC'] }, 1, 0] },
+          },
         },
       },
     ]),
@@ -136,8 +180,12 @@ export async function getOverviewStats(): Promise<OverviewStats> {
         $group: {
           _id: null,
           total: { $sum: 1 },
-          available: { $sum: { $cond: [{ $eq: ['$status', 'AVAILABLE'] }, 1, 0] } },
-          pendingReview: { $sum: { $cond: [{ $eq: ['$status', 'PENDING_REVIEW'] }, 1, 0] } },
+          available: {
+            $sum: { $cond: [{ $eq: ['$status', 'AVAILABLE'] }, 1, 0] },
+          },
+          pendingReview: {
+            $sum: { $cond: [{ $eq: ['$status', 'PENDING_REVIEW'] }, 1, 0] },
+          },
           hidden: { $sum: { $cond: [{ $eq: ['$status', 'HIDDEN'] }, 1, 0] } },
         },
       },
@@ -148,10 +196,20 @@ export async function getOverviewStats(): Promise<OverviewStats> {
           _id: null,
           total: { $sum: 1 },
           pending: { $sum: { $cond: [{ $eq: ['$status', 'PENDING'] }, 1, 0] } },
-          completed: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, 1, 0] } },
-          disputed: { $sum: { $cond: [{ $eq: ['$status', 'DISPUTED'] }, 1, 0] } },
+          completed: {
+            $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, 1, 0] },
+          },
+          disputed: {
+            $sum: { $cond: [{ $eq: ['$status', 'DISPUTED'] }, 1, 0] },
+          },
           totalRevenue: {
-            $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, { $ifNull: ['$totalAmount', 0] }, 0] },
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'COMPLETED'] },
+                { $ifNull: ['$totalAmount', 0] },
+                0,
+              ],
+            },
           },
         },
       },
@@ -162,29 +220,74 @@ export async function getOverviewStats(): Promise<OverviewStats> {
           _id: null,
           total: { $sum: 1 },
           pending: { $sum: { $cond: [{ $eq: ['$status', 'PENDING'] }, 1, 0] } },
-          resolved: { $sum: { $cond: [{ $eq: ['$status', 'RESOLVED'] }, 1, 0] } },
-          dismissed: { $sum: { $cond: [{ $eq: ['$status', 'DISMISSED'] }, 1, 0] } },
+          resolved: {
+            $sum: { $cond: [{ $eq: ['$status', 'RESOLVED'] }, 1, 0] },
+          },
+          dismissed: {
+            $sum: { $cond: [{ $eq: ['$status', 'DISMISSED'] }, 1, 0] },
+          },
         },
       },
     ]),
   ]);
 
   const u = userStats[0] || { total: 0, active: 0, banned: 0, pendingKyc: 0 };
-  const p = postStats[0] || { total: 0, available: 0, pendingReview: 0, hidden: 0 };
-  const t = txStats[0] || { total: 0, pending: 0, completed: 0, disputed: 0, totalRevenue: 0 };
-  const r = reportStats[0] || { total: 0, pending: 0, resolved: 0, dismissed: 0 };
+  const p = postStats[0] || {
+    total: 0,
+    available: 0,
+    pendingReview: 0,
+    hidden: 0,
+  };
+  const t = txStats[0] || {
+    total: 0,
+    pending: 0,
+    completed: 0,
+    disputed: 0,
+    totalRevenue: 0,
+  };
+  const r = reportStats[0] || {
+    total: 0,
+    pending: 0,
+    resolved: 0,
+    dismissed: 0,
+  };
 
   return {
-    users: { total: u.total, active: u.active, banned: u.banned, pendingKyc: u.pendingKyc },
-    posts: { total: p.total, available: p.available, pendingReview: p.pendingReview, hidden: p.hidden },
-    transactions: { total: t.total, pending: t.pending, completed: t.completed, disputed: t.disputed, totalRevenue: t.totalRevenue },
-    reports: { total: r.total, pending: r.pending, resolved: r.resolved, dismissed: r.dismissed },
+    users: {
+      total: u.total,
+      active: u.active,
+      banned: u.banned,
+      pendingKyc: u.pendingKyc,
+    },
+    posts: {
+      total: p.total,
+      available: p.available,
+      pendingReview: p.pendingReview,
+      hidden: p.hidden,
+    },
+    transactions: {
+      total: t.total,
+      pending: t.pending,
+      completed: t.completed,
+      disputed: t.disputed,
+      totalRevenue: t.totalRevenue,
+    },
+    reports: {
+      total: r.total,
+      pending: r.pending,
+      resolved: r.resolved,
+      dismissed: r.dismissed,
+    },
   };
 }
 
 // ─── Growth Charts ───────────────────────────────────────────
 
-export async function getGrowthChart(tab: string, range: TimeRange, anchor?: Date): Promise<ChartPoint[]> {
+export async function getGrowthChart(
+  tab: string,
+  range: TimeRange,
+  anchor?: Date
+): Promise<ChartPoint[]> {
   const modelMap: Record<string, mongoose.Model<any>> = {
     users: User,
     posts: Post,
@@ -202,8 +305,14 @@ export async function getGrowthChart(tab: string, range: TimeRange, anchor?: Dat
   return getGrowthData(model, range, anchor);
 }
 
-async function getAuditGrowth(range: TimeRange, anchor?: Date): Promise<ChartPoint[]> {
-  const { start, end, buckets, groupFormat, labelFn } = getDateRange(range, anchor);
+async function getAuditGrowth(
+  range: TimeRange,
+  anchor?: Date
+): Promise<ChartPoint[]> {
+  const { start, end, buckets, groupFormat, labelFn } = getDateRange(
+    range,
+    anchor
+  );
 
   const models = [User, Post, Transaction, Report];
   const allResults: Map<string, number> = new Map();
@@ -237,7 +346,11 @@ const DEFAULT_LIMIT = 10;
 
 export type SortOrder = 'asc' | 'desc';
 
-export async function getRecentUsers(page: number, limit: number = DEFAULT_LIMIT, sortOrder: SortOrder = 'desc'): Promise<PaginatedResult<any>> {
+export async function getRecentUsers(
+  page: number,
+  limit: number = DEFAULT_LIMIT,
+  sortOrder: SortOrder = 'desc'
+): Promise<PaginatedResult<any>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
@@ -250,15 +363,24 @@ export async function getRecentUsers(page: number, limit: number = DEFAULT_LIMIT
     User.countDocuments(),
   ]);
 
-  return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  return {
+    data,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  };
 }
 
-export async function getRecentPosts(page: number, limit: number = DEFAULT_LIMIT, sortOrder: SortOrder = 'desc'): Promise<PaginatedResult<any>> {
+export async function getRecentPosts(
+  page: number,
+  limit: number = DEFAULT_LIMIT,
+  sortOrder: SortOrder = 'desc'
+): Promise<PaginatedResult<any>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
     Post.find()
-      .select('title type status remainingQuantity totalQuantity price createdAt')
+      .select(
+        'title type status remainingQuantity totalQuantity price createdAt'
+      )
       .populate('ownerId', 'fullName avatar')
       .sort({ createdAt: sort })
       .skip(skip)
@@ -267,10 +389,17 @@ export async function getRecentPosts(page: number, limit: number = DEFAULT_LIMIT
     Post.countDocuments(),
   ]);
 
-  return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  return {
+    data,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  };
 }
 
-export async function getRecentTransactions(page: number, limit: number = DEFAULT_LIMIT, sortOrder: SortOrder = 'desc'): Promise<PaginatedResult<any>> {
+export async function getRecentTransactions(
+  page: number,
+  limit: number = DEFAULT_LIMIT,
+  sortOrder: SortOrder = 'desc'
+): Promise<PaginatedResult<any>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
@@ -286,10 +415,17 @@ export async function getRecentTransactions(page: number, limit: number = DEFAUL
     Transaction.countDocuments(),
   ]);
 
-  return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  return {
+    data,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  };
 }
 
-export async function getRecentReports(page: number, limit: number = DEFAULT_LIMIT, sortOrder: SortOrder = 'desc'): Promise<PaginatedResult<any>> {
+export async function getRecentReports(
+  page: number,
+  limit: number = DEFAULT_LIMIT,
+  sortOrder: SortOrder = 'desc'
+): Promise<PaginatedResult<any>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
@@ -303,10 +439,17 @@ export async function getRecentReports(page: number, limit: number = DEFAULT_LIM
     Report.countDocuments(),
   ]);
 
-  return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  return {
+    data,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  };
 }
 
-export async function getAuditLogs(page: number, limit: number = DEFAULT_LIMIT, sortOrder: SortOrder = 'desc'): Promise<PaginatedResult<any>> {
+export async function getAuditLogs(
+  page: number,
+  limit: number = DEFAULT_LIMIT,
+  sortOrder: SortOrder = 'desc'
+): Promise<PaginatedResult<any>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
 
@@ -328,7 +471,9 @@ export async function getAuditLogs(page: number, limit: number = DEFAULT_LIMIT, 
       .sort({ updatedAt: sort })
       .limit(limit * 2)
       .lean()
-      .then((docs) => docs.map((d) => ({ ...d, _type: 'TRANSACTION' as const }))),
+      .then((docs) =>
+        docs.map((d) => ({ ...d, _type: 'TRANSACTION' as const }))
+      ),
     Report.find()
       .select('targetType status actionTaken updatedAt')
       .sort({ updatedAt: sort })
@@ -338,12 +483,16 @@ export async function getAuditLogs(page: number, limit: number = DEFAULT_LIMIT, 
   ]);
 
   const all = [...users, ...posts, ...transactions, ...reports].sort((a, b) => {
-    const diff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    const diff =
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     return sortOrder === 'asc' ? -diff : diff;
   });
 
   const total = all.length;
   const data = all.slice(skip, skip + limit);
 
-  return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  return {
+    data,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  };
 }

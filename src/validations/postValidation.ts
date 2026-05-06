@@ -48,10 +48,12 @@ export const updatePostSchema = z
       .optional(),
     price: z.number().min(0).optional(),
     expiryDate: z.string().min(1).optional(),
-    pickupTime: z.object({
-      start: z.string().min(1),
-      end: z.string().min(1),
-    }).optional(),
+    pickupTime: z
+      .object({
+        start: z.string().min(1),
+        end: z.string().min(1),
+      })
+      .optional(),
     location: pointSchema.optional(),
     publishAt: z.string().optional(),
   })
@@ -80,10 +82,12 @@ export const adminUpdatePostSchema = z
     remainingQuantity: z.number().min(0).optional(),
     price: z.number().min(0).optional(),
     expiryDate: z.string().min(1).optional(),
-    pickupTime: z.object({
-      start: z.string().min(1),
-      end: z.string().min(1),
-    }).optional(),
+    pickupTime: z
+      .object({
+        start: z.string().min(1),
+        end: z.string().min(1),
+      })
+      .optional(),
     location: pointSchema.optional(),
     publishAt: z.string().optional(),
     status: z
