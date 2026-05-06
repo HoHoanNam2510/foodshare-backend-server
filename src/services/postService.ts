@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import Post, { IPost } from '@/models/Post';
 import { createNotification } from '@/services/notificationService';
 import SystemConfig from '@/models/SystemConfig';
@@ -17,13 +16,18 @@ const DEFAULT_APPROVE_THRESHOLD = 70;
 
 // --- AI Moderation ---
 
-const geminiApiKey = process.env.GEMINI_API_KEY || '';
+// Groq: OpenAI-compatible inference platform (api.groq.com). Key format: gsk_...
+const groqClient = process.env.GROQ_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: 'https://api.groq.com/openai/v1',
+    })
+  : null;
 
-function getGeminiModel(): ReturnType<
-  GoogleGenerativeAI['getGenerativeModel']
-> {
-  const genAI = new GoogleGenerativeAI(geminiApiKey);
-  return genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+if (!groqClient) {
+  console.warn('[AI Moderation] GROQ_API_KEY not set — AI moderation disabled');
+} else {
+  console.info('[AI Moderation] Groq client initialized');
 }
 
 type ModerationResult = {
@@ -31,77 +35,70 @@ type ModerationResult = {
   reason: string;
 };
 
-async function fetchImageAsBase64(
-  url: string
-): Promise<{ data: string; mimeType: string }> {
-  const response = await axios.get<ArrayBuffer>(url, {
-    responseType: 'arraybuffer',
-  });
-  const data = Buffer.from(response.data).toString('base64');
-  const mimeType = (response.headers['content-type'] as string) || 'image/jpeg';
-  return { data, mimeType };
-}
-
 async function moderatePostWithAI(data: {
   title: string;
   description?: string;
   images: string[];
 }): Promise<ModerationResult> {
-  if (!geminiApiKey) {
-    return { trustScore: 60, reason: 'Gemini API key chưa được cấu hình' };
+  if (!groqClient) {
+    return { trustScore: 60, reason: 'Grok API key chưa được cấu hình' };
   }
 
-  const model = getGeminiModel();
+  const imageUrls = data.images.slice(0, 3);
 
-  // Tải tối đa 3 ảnh đầu và chuyển sang base64 để gửi Gemini Vision
-  const imageParts: { inlineData: { data: string; mimeType: string } }[] = [];
-  for (const url of data.images.slice(0, 3)) {
-    try {
-      const { data: imgData, mimeType } = await fetchImageAsBase64(url);
-      imageParts.push({ inlineData: { data: imgData, mimeType } });
-    } catch {
-      // Bỏ qua ảnh lỗi, tiếp tục với ảnh còn lại
-    }
-  }
+  const prompt = `Bạn là chuyên gia kiểm duyệt nội dung cho ứng dụng chia sẻ thực phẩm FoodShare.
+Đánh giá bài đăng và trả về điểm tín nhiệm từ 0–100.
 
-  const hasImages = imageParts.length > 0;
+=== TIÊU CHÍ BẮT BUỘC (vi phạm → trừ 30–50 điểm) ===
+1. Phải là thực phẩm: không phải đồ vật/người/quảng cáo phi thực phẩm
+2. Thống nhất nội dung: tiêu đề + mô tả + ảnh phải cùng 1 sản phẩm
+3. Ngôn ngữ phù hợp: không tục tĩu, lăng mạ, kích động
+4. Không lừa đảo: không quảng cáo sai sự thật
+5. An toàn cơ bản: không có dấu hiệu thực phẩm hỏng/mốc rõ ràng
 
-  const prompt = `Bạn là hệ thống kiểm duyệt nội dung cho ứng dụng chia sẻ thức ăn FoodShare.
-Hãy đánh giá mức độ uy tín của bài đăng chia sẻ thức ăn sau đây trên thang điểm 0-100.
+=== TIÊU CHÍ CHẤT LƯỢNG (trừ 5–20 điểm mỗi lỗi) ===
+6. Ảnh khớp với tiêu đề món ăn
+7. Mô tả không lạc đề sang sản phẩm khác
+8. Ảnh trông thực tế (không phải stock photo hoàn hảo bất thường)
+9. Tiêu đề đủ rõ ràng để hiểu đây là món gì
+10. Thức ăn trong ảnh sạch sẽ, bảo quản đúng cách
 
-Tiêu chí đánh giá:
-- Nội dung có liên quan đến thức ăn/thực phẩm không?
-- Tiêu đề và mô tả có rõ ràng, hợp lệ không?
-- Có dấu hiệu lừa đảo, spam, hoặc nội dung không phù hợp không?
-- Có chứa ngôn ngữ thù ghét, bạo lực, hoặc nội dung nhạy cảm không?
-${hasImages ? '- Ảnh đính kèm có thực sự là thức ăn/thực phẩm không? Ảnh có rõ ràng, chất lượng tốt không?' : ''}
-
-Thông tin bài đăng:
+Bài đăng:
 - Tiêu đề: "${data.title}"
-- Mô tả: "${data.description || 'Không có mô tả'}"
-- Số lượng ảnh: ${data.images.length}${hasImages ? ` (đã phân tích ${imageParts.length} ảnh)` : ' (không thể tải ảnh để phân tích)'}
+- Mô tả: "${data.description || '(không có mô tả)'}"
+- Số ảnh: ${data.images.length}${imageUrls.length > 0 ? ` (đã đính kèm ${imageUrls.length} ảnh)` : ''}
 
-Trả về JSON theo format:
-{"trustScore": <số_nguyên_0_đến_100>, "reason": "<lý_do_ngắn_gọn>"}
-
-CHỈ trả về JSON, không thêm bất kỳ text nào khác.`;
+Trả về JSON (CHỈ JSON, không thêm text):
+{"trustScore": <0-100>, "reason": "<lý_do_ngắn_gọn_1_câu>"}`;
 
   try {
-    const contentParts = hasImages
-      ? [...imageParts, { text: prompt }]
-      : [{ text: prompt }];
-    const result = await model.generateContent(contentParts);
-    const responseText = result.response.text().trim();
-    const cleanedText = responseText.replace(/```json\n?|```\n?/g, '').trim();
-    const parsed: ModerationResult = JSON.parse(cleanedText);
+    const contentParts: OpenAI.ChatCompletionContentPart[] = [
+      { type: 'text', text: prompt },
+      ...imageUrls.map(
+        (url): OpenAI.ChatCompletionContentPartImage => ({
+          type: 'image_url',
+          image_url: { url },
+        })
+      ),
+    ];
 
+    const response = await groqClient.chat.completions.create({
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      messages: [{ role: 'user', content: contentParts }],
+      max_tokens: 300,
+      temperature: 0.1,
+    });
+
+    const raw = (response.choices[0].message.content || '').trim();
+    const cleaned = raw.replace(/```json\n?|```\n?/g, '').trim();
+    const parsed: ModerationResult = JSON.parse(cleaned);
     const trustScore = Math.max(
       0,
       Math.min(100, Math.round(parsed.trustScore))
     );
     return { trustScore, reason: parsed.reason || 'Không có lý do cụ thể' };
   } catch (error) {
-    console.error('AI Moderation error:', error);
+    console.error('[AI Moderation] Groq API error:', error);
     return { trustScore: 60, reason: 'Lỗi khi gọi AI kiểm duyệt' };
   }
 }

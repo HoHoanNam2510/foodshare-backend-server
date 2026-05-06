@@ -1,6 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
-const geminiApiKey = process.env.GEMINI_API_KEY || '';
+const groqClient = process.env.GROQ_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: 'https://api.groq.com/openai/v1',
+    })
+  : null;
 
 export type SupportedLang = 'vi' | 'en';
 
@@ -9,25 +14,15 @@ const LANG_NAME: Record<SupportedLang, string> = {
   en: 'English',
 };
 
-function getGeminiModel() {
-  const genAI = new GoogleGenerativeAI(geminiApiKey);
-  return genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-}
-
-/**
- * Dịch một mảng text sang ngôn ngữ đích. Giữ nguyên thứ tự.
- * Không dịch các placeholder dạng {{var}} và các URL.
- */
 export async function translateBatch(
   texts: string[],
   targetLang: SupportedLang
 ): Promise<string[]> {
-  if (!geminiApiKey) {
-    throw new Error('GEMINI_API_KEY chưa được cấu hình');
+  if (!groqClient) {
+    throw new Error('GROQ_API_KEY chưa được cấu hình');
   }
   if (texts.length === 0) return [];
 
-  const model = getGeminiModel();
   const numbered = texts
     .map((t, i) => `[${i}] ${t.replace(/\r?\n/g, ' ')}`)
     .join('\n');
@@ -45,8 +40,14 @@ ${numbered}
 
 Output JSON:`;
 
-  const result = await model.generateContent(prompt);
-  const raw = result.response.text().trim();
+  const response = await groqClient.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 2048,
+    temperature: 0.1,
+  });
+
+  const raw = (response.choices[0].message.content || '').trim();
   const cleaned = raw.replace(/```json\n?|```\n?/g, '').trim();
 
   const parsed = JSON.parse(cleaned);
