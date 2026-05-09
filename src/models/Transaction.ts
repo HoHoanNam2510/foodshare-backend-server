@@ -65,10 +65,10 @@ const TransactionSchema = new Schema<ITransaction>(
 
 // Đánh Index để tăng tốc độ truy vấn
 // 1. Dùng khi user xem "Lịch sử xin đồ/mua hàng của tôi"
-TransactionSchema.index({ requesterId: 1, createdAt: -1 });
+TransactionSchema.index({ requesterId: 1, status: 1, createdAt: -1 });
 
 // 2. Dùng khi chủ post/store xem "Danh sách ai đang xin/mua bài đăng này"
-TransactionSchema.index({ postId: 1, status: 1 });
+TransactionSchema.index({ ownerId: 1, status: 1, createdAt: -1 });
 
 const Transaction: Model<ITransaction> =
   mongoose.models.Transaction ||
