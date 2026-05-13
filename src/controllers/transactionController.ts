@@ -9,7 +9,6 @@ import User from '@/models/User';
 import { awardTransactionPoints } from '@/services/greenPointService';
 import { checkAndAwardBadges } from '@/services/badgeService';
 import { createNotification } from '@/services/notificationService';
-import { generateVietQR } from '@/services/payment';
 import logger from '@/utils/logger';
 
 // --- TRX_F01: TẠO YÊU CẦU XIN ĐỒ (P2P) ---
@@ -279,10 +278,9 @@ export const respondToRequest = async (
           data: { verificationCode: rawQrString },
         });
       } else {
-        // B2C ORDER: validate store paymentInfo, generate VietQR → paymentQR
+        // B2C ORDER: sinh transfer code + lưu bank snapshot của store
         const store = await User.findById(ownerId);
         if (
-          !store?.paymentInfo?.bankCode ||
           !store?.paymentInfo?.bankAccountNumber ||
           !store?.paymentInfo?.bankAccountName
         ) {
@@ -298,22 +296,12 @@ export const respondToRequest = async (
           .toString()
           .slice(-8)
           .toUpperCase();
-        const description = `FS${orderRef}`;
-
-        try {
-          const qrResult = await generateVietQR({
-            bankCode: store.paymentInfo.bankCode,
-            bankAccountNumber: store.paymentInfo.bankAccountNumber,
-            bankAccountName: store.paymentInfo.bankAccountName,
-            amount: transaction.totalAmount ?? 0,
-            description,
-          });
-          transaction.paymentQR = qrResult.qrDataURL;
-        } catch (qrErr) {
-          logger.warn('[respondToRequest] VietQR generation failed', {
-            error: qrErr instanceof Error ? qrErr.message : String(qrErr),
-          });
-        }
+        transaction.verificationCode = `FS${orderRef}`;
+        transaction.bankSnapshot = {
+          bankName: store.paymentInfo.bankName,
+          bankAccountNumber: store.paymentInfo.bankAccountNumber,
+          bankAccountName: store.paymentInfo.bankAccountName,
+        };
 
         await transaction.save();
 

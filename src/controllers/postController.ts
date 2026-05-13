@@ -162,8 +162,10 @@ export const createPost = async (
   req: Request,
   res: Response
 ): Promise<void> => {
+  const ownerId = req.user?.id;
+  let newPostId: string | null = null;
+
   try {
-    const ownerId = req.user?.id;
     const {
       type,
       category,
@@ -255,7 +257,7 @@ export const createPost = async (
       images,
       totalQuantity,
       remainingQuantity: totalQuantity,
-      price: type === 'P2P_FREE' ? 0 : price || 0,
+      price: type === 'P2P_FREE' ? 0 : (price ?? 0),
       expiryDate,
       pickupTime,
       status: 'PENDING_REVIEW',
@@ -268,6 +270,7 @@ export const createPost = async (
     }
 
     const newPost = await Post.create(postData);
+    newPostId = String(newPost._id);
 
     // 4. Đánh dấu passcode đã sử dụng
     passcodeRecord.usedAt = now;
@@ -279,24 +282,50 @@ export const createPost = async (
       message: 'Tạo bài đăng thành công',
       data: newPost,
     });
+  } catch (error: unknown) {
+    logger.error('[createPost] Error creating post', {
+      ownerId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
 
-    // 6. Trigger badge check (POST_CREATED) — không block response
-    try {
-      await checkAndAwardBadges(ownerId, 'POST_CREATED');
-    } catch (err) {
-      console.warn('[PostController] badge check (POST_CREATED) failed:', err);
+    if (error instanceof mongoose.Error.ValidationError) {
+      const fieldErrors = Object.entries(error.errors).map(([path, err]) => ({
+        path,
+        message: err.message,
+      }));
+      res.status(400).json({
+        success: false,
+        message: 'Dữ liệu bài đăng không hợp lệ',
+        errorCode: 'VALIDATION_ERROR',
+        errors: fieldErrors,
+      });
+      return;
     }
 
-    // 7. Background Job — AI Moderation (không block response)
-    runAIModerationJob(String(newPost._id), 'ON_CREATE').catch((err) => {
-      console.error('Background AI moderation failed:', err);
-    });
-  } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-
     res
       .status(500)
       .json({ success: false, message: 'Lỗi server', error: errorMessage });
+    return;
+  }
+
+  // 6 & 7. Fire-and-forget AFTER response — nằm ngoài try/catch để tránh
+  // outer catch chạy sau khi response đã gửi
+  if (ownerId) {
+    checkAndAwardBadges(ownerId, 'POST_CREATED').catch((err: unknown) => {
+      logger.warn('[createPost] badge check (POST_CREATED) failed', {
+        error: err,
+      });
+    });
+  }
+
+  if (newPostId) {
+    runAIModerationJob(newPostId, 'ON_CREATE').catch((err: unknown) => {
+      logger.error('[createPost] Background AI moderation failed', {
+        error: err,
+      });
+    });
   }
 };
 

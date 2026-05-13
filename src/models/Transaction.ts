@@ -10,7 +10,11 @@ export interface ITransaction extends Document {
   paymentMethod: 'FREE' | 'BANK_TRANSFER';
   totalAmount?: number;
   verificationCode?: string;
-  paymentQR?: string;
+  bankSnapshot?: {
+    bankName?: string;
+    bankAccountNumber: string;
+    bankAccountName: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,11 +58,15 @@ const TransactionSchema = new Schema<ITransaction>(
     // Tổng tiền thanh toán (price * quantity) — lưu snapshot tại thời điểm đặt hàng
     totalAmount: { type: Number, min: 0 },
 
-    // Mã xác minh QR — sinh khi P2P REQUEST được ACCEPTED; sparse để tránh lỗi unique khi null
+    // Mã xác minh QR (P2P) / mã nội dung chuyển khoản (B2C) — sparse để tránh lỗi unique khi null
     verificationCode: { type: String, unique: true, sparse: true },
 
-    // VietQR image (base64) — sinh khi store ACCEPT một B2C ORDER
-    paymentQR: { type: String },
+    // Snapshot thông tin ngân hàng của store — lưu khi store ACCEPT một B2C ORDER
+    bankSnapshot: {
+      bankName: { type: String },
+      bankAccountNumber: { type: String },
+      bankAccountName: { type: String },
+    },
   },
   { timestamps: true }
 );

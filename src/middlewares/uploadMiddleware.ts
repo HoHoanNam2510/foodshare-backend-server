@@ -3,6 +3,7 @@ import { Request } from 'express';
 
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
+  'image/jpg', // alias — một số Android client gửi jpg thay vì jpeg
   'image/png',
   'image/webp',
   'image/heic',

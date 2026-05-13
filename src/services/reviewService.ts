@@ -186,6 +186,7 @@ interface GetReviewsQuery {
   page?: number;
   limit?: number;
   sort?: string;
+  transactionId?: string;
 }
 
 interface PaginatedReviewResult {
@@ -253,19 +254,22 @@ export async function getMyWrittenReviews(
   reviewerId: string,
   query: GetReviewsQuery
 ): Promise<PaginatedReviewResult> {
-  const { page = 1, limit = 20 } = query;
+  const { page = 1, limit = 20, transactionId } = query;
+
+  const filter: Record<string, unknown> = { reviewerId };
+  if (transactionId) filter.transactionId = transactionId;
 
   const skip = (page - 1) * limit;
 
   const [reviews, total] = await Promise.all([
-    Review.find({ reviewerId })
+    Review.find(filter)
       .populate('revieweeId', 'fullName avatar')
       .populate('transactionId', 'postId type quantity status')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
-    Review.countDocuments({ reviewerId }),
+    Review.countDocuments(filter),
   ]);
 
   return {

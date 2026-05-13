@@ -117,11 +117,12 @@ export const getMyWrittenReviews = async (
       return;
     }
 
-    const { page, limit } = req.query;
+    const { page, limit, transactionId } = req.query;
 
     const result = await getMyWrittenReviewsService(reviewerId, {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
+      transactionId: transactionId as string | undefined,
     });
 
     res.status(200).json({
