@@ -8,7 +8,11 @@ import { deleteMultipleImagesByUrl } from '@/services/uploadService';
 import { softDeletePost, SoftDeleteError } from '@/services/softDeleteService';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
 import logger from '@/utils/logger';
-import { runAIModerationJob, getAdminPostList } from '@/services/postService';
+import {
+  runAIModerationJob,
+  getAdminPostList,
+  getHomePostsFeed,
+} from '@/services/postService';
 import { checkAndAwardBadges } from '@/services/badgeService';
 
 const POST_PASSCODE_LENGTH = 6;
@@ -606,6 +610,62 @@ export const searchMapPosts = async (
     res.status(200).json({
       success: true,
       message: 'Lấy bài đăng xung quanh thành công',
+      data: posts,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// =============================================
+// II-B. NHÓM HANDLER HOME SCREEN
+// =============================================
+
+// GET /api/posts/home/freshly-shared?categorySlug=&lng=&lat=&limit=6
+export const getFreshlyShared = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { categorySlug, lng, lat, limit } = req.query;
+    const posts = await getHomePostsFeed('P2P_FREE', {
+      categorySlug: typeof categorySlug === 'string' ? categorySlug : undefined,
+      lng: lng ? parseFloat(lng as string) : null,
+      lat: lat ? parseFloat(lat as string) : null,
+      limit: Number(limit) || 6,
+    });
+    res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách bài đăng thành công',
+      data: posts,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// GET /api/posts/home/market-teaser?categorySlug=&lng=&lat=&limit=6
+export const getMarketTeaser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { categorySlug, lng, lat, limit } = req.query;
+    const posts = await getHomePostsFeed('B2C_MYSTERY_BAG', {
+      categorySlug: typeof categorySlug === 'string' ? categorySlug : undefined,
+      lng: lng ? parseFloat(lng as string) : null,
+      lat: lat ? parseFloat(lat as string) : null,
+      limit: Number(limit) || 6,
+    });
+    res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách bài đăng thành công',
       data: posts,
     });
   } catch (error: unknown) {

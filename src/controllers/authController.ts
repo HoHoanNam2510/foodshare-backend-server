@@ -10,6 +10,7 @@ import {
 } from '@/services/uploadService';
 import { checkAndAwardBadges } from '@/services/badgeService';
 import { softDeleteUser, SoftDeleteError } from '@/services/softDeleteService';
+import { getImpactStats, UserServiceError } from '@/services/userService';
 
 const CODE_LENGTH = 6;
 const CODE_EXPIRE_MINUTES = 10;
@@ -934,6 +935,39 @@ export const deleteMyAccount = async (
     });
   } catch (error: unknown) {
     if (error instanceof SoftDeleteError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// --- HOME: Impact stats của user hiện tại ---
+// GET /api/auth/me/impact
+export const getMyImpact = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const stats = await getImpactStats(userId);
+    res.status(200).json({ success: true, data: stats });
+  } catch (error: unknown) {
+    if (error instanceof UserServiceError) {
       res
         .status(error.statusCode)
         .json({ success: false, message: error.message });

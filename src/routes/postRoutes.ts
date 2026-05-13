@@ -8,6 +8,8 @@ import {
   getPostDetail,
   searchMapPosts,
   getExplorePosts,
+  getFreshlyShared,
+  getMarketTeaser,
   adminGetPosts,
   adminUpdatePost,
   adminToggleHidePost,
@@ -83,6 +85,14 @@ router.delete('/:id', verifyAuth, deletePost);
 // NHÓM PUBLIC / TÌM KIẾM BẢN ĐỒ
 // Đặt /map trước /:id để tránh bị catch
 // =============================================
+
+// [GET] /api/posts/home/freshly-shared
+// (HOME: Bài đăng P2P_FREE mới nhất cho FreshlyShared — không cần auth)
+router.get('/home/freshly-shared', getFreshlyShared);
+
+// [GET] /api/posts/home/market-teaser
+// (HOME: Bài đăng B2C_MYSTERY_BAG mới nhất cho MarketTeaser — không cần auth)
+router.get('/home/market-teaser', getMarketTeaser);
 
 // [GET] /api/posts/explore
 // (Lấy danh sách bài đăng AVAILABLE cho màn hình Explore — không cần GPS)

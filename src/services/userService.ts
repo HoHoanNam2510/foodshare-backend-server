@@ -1,4 +1,8 @@
+import mongoose from 'mongoose';
+
 import User, { IUser } from '@/models/User';
+import Transaction from '@/models/Transaction';
+import Post from '@/models/Post';
 import { hashPassword } from '@/utils/auth';
 import { softDeleteUser } from '@/services/softDeleteService';
 
@@ -413,4 +417,70 @@ export async function deleteUser(
   await softDeleteUser(id, requesterId);
 
   return toSafeUser(user);
+}
+
+// =============================================
+// IMPACT STATS (HOME SCREEN)
+// =============================================
+
+export interface ImpactStats {
+  itemsReceived: number;
+  itemsGiven: number;
+  bagsPurchased: number;
+  bagsSold: number | null;
+  greenPoints: number;
+}
+
+/**
+ * Tính toán thống kê đóng góp cá nhân của user cho ImpactBanner.
+ */
+export async function getImpactStats(userId: string): Promise<ImpactStats> {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new UserServiceError('User ID không hợp lệ', 400);
+  }
+
+  const ownerId = new mongoose.Types.ObjectId(userId);
+
+  const user = await User.findById(userId).select('greenPoints role').lean();
+  if (!user) {
+    throw new UserServiceError('Không tìm thấy người dùng', 404);
+  }
+
+  const [itemsReceived, itemsGiven, bagsPurchased, bagsSold] =
+    await Promise.all([
+      // Số lần nhận thực phẩm P2P thành công (user là người nhận)
+      Transaction.countDocuments({
+        requesterId: ownerId,
+        type: 'REQUEST',
+        status: 'COMPLETED',
+      }),
+      // Số bài đăng P2P đã được giải cứu hoàn toàn (user là người đăng)
+      Post.countDocuments({
+        ownerId,
+        type: 'P2P_FREE',
+        status: 'OUT_OF_STOCK',
+      }),
+      // Số túi mù đã mua thành công (user là người mua)
+      Transaction.countDocuments({
+        requesterId: ownerId,
+        type: 'ORDER',
+        status: 'COMPLETED',
+      }),
+      // Số túi mù đã bán thành công (chỉ tính nếu là STORE)
+      user.role === 'STORE'
+        ? Transaction.countDocuments({
+            ownerId,
+            type: 'ORDER',
+            status: 'COMPLETED',
+          })
+        : Promise.resolve(null),
+    ]);
+
+  return {
+    itemsReceived,
+    itemsGiven,
+    bagsPurchased,
+    bagsSold: bagsSold as number | null,
+    greenPoints: user.greenPoints,
+  };
 }

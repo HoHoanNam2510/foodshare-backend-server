@@ -13,6 +13,7 @@ import {
   updateMyLocation,
   registerStore,
   deleteMyAccount,
+  getMyImpact,
 } from '../controllers/authController';
 import {
   getMyTrash,
@@ -130,6 +131,9 @@ router.put(
 // [DELETE] /api/auth/me/account
 // (User tự xóa tài khoản — soft delete + cascade Posts, Reviews, Conversations)
 router.delete('/me/account', verifyAuth, deleteMyAccount);
+
+// [GET] /api/auth/me/impact
+router.get('/me/impact', verifyAuth, getMyImpact);
 
 // [GET] /api/auth/me/trash?collection=posts|reviews|vouchers&page=1&limit=20
 router.get('/me/trash', verifyAuth, getMyTrash);

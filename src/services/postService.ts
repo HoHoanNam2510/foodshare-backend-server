@@ -267,3 +267,70 @@ export async function getAdminPostList(
     },
   };
 }
+
+// =============================================
+// HOME SCREEN
+// =============================================
+
+type HomePostType = 'P2P_FREE' | 'B2C_MYSTERY_BAG';
+
+export interface HomePostsQuery {
+  categorySlug?: string;
+  lng?: number | null;
+  lat?: number | null;
+  limit?: number;
+}
+
+function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistanceLabel(km: number): string {
+  if (km < 1) return `~${Math.round(km * 1000)} m`;
+  return `~${km.toFixed(1)} km`;
+}
+
+export async function getHomePostsFeed(
+  type: HomePostType,
+  query: HomePostsQuery
+): Promise<Array<Record<string, unknown>>> {
+  const maxItems = Math.min(query.limit ?? 6, 20);
+  const filter: Record<string, unknown> = { status: 'AVAILABLE', type };
+
+  if (query.categorySlug && query.categorySlug !== 'all') {
+    filter.category = query.categorySlug;
+  }
+
+  const posts = await Post.find(filter)
+    .populate('ownerId', 'fullName avatar averageRating role')
+    .sort({ createdAt: -1 })
+    .limit(maxItems)
+    .lean();
+
+  return (posts as Array<Record<string, unknown>>).map((post) => {
+    const loc = post.location as IPost['location'];
+    const coords = loc?.coordinates;
+    let distanceLabel: string | undefined;
+
+    if (query.lng != null && query.lat != null && coords?.length === 2) {
+      const km = haversineKm(query.lat, query.lng, coords[1], coords[0]);
+      distanceLabel = formatDistanceLabel(km);
+    }
+
+    return { ...post, distanceLabel };
+  });
+}

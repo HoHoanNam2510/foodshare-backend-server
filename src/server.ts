@@ -24,6 +24,8 @@ import translateRoutes from './routes/translateRoutes';
 import statisticsRoutes from './routes/statisticsRoutes';
 import trashRoutes from './routes/trashRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import categoryRoutes from './routes/categoryRoutes';
+import { seedCategories } from './seeds/categorySeeder';
 import logger from './utils/logger';
 import { startScheduler } from './utils/scheduler';
 import { initNotificationService } from './services/notificationService';
@@ -81,6 +83,7 @@ app.use('/api/badges', badgeRoutes);
 app.use('/api/translate', translateRoutes);
 app.use('/api/admin/trash', trashRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
@@ -100,8 +103,11 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 // Kết nối MongoDB và Khởi động Server
 mongoose
   .connect(MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     logger.info('✅ Đã kết nối MongoDB thành công!');
+
+    // Seed dữ liệu mặc định (idempotent)
+    await seedCategories();
 
     // Khởi chạy cron jobs (pickup deadline, payment timeout)
     startScheduler();
