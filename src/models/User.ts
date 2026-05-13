@@ -20,6 +20,9 @@ export interface IUser extends Document, ISoftDelete {
   };
   kycStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
   kycDocuments: string[];
+  pendingKycDocuments: string[];
+  pendingKycStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+  kycGracePeriodEndsAt: Date | null;
   storeInfo?: {
     businessName?: string;
     openHours?: string;
@@ -96,6 +99,13 @@ const UserSchema = new Schema<IUser>(
       default: 'PENDING',
     },
     kycDocuments: [{ type: String }],
+    pendingKycDocuments: { type: [String], default: [] },
+    pendingKycStatus: {
+      type: String,
+      enum: ['PENDING', 'APPROVED', 'REJECTED'],
+      default: null,
+    },
+    kycGracePeriodEndsAt: { type: Date, default: null },
 
     storeInfo: {
       businessName: String,

@@ -17,6 +17,7 @@ import {
 import {
   verifyAuth,
   verifyAdmin,
+  verifyStoreActive,
   optionalAuth,
 } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validateBodyMiddleware';
@@ -67,7 +68,13 @@ router.post(
 
 // [POST] /api/posts/
 // (PST_F02: Tạo bài đăng chia sẻ/bán túi mù mới)
-router.post('/', verifyAuth, validateBody(createPostSchema), createPost);
+router.post(
+  '/',
+  verifyAuth,
+  verifyStoreActive,
+  validateBody(createPostSchema),
+  createPost
+);
 
 // [GET] /api/posts/me
 // (PST_F01: Xem danh sách bài đăng gần đây của chính người dùng)

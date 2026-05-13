@@ -12,6 +12,7 @@ import {
   runAIModerationJob,
   getAdminPostList,
   getHomePostsFeed,
+  expireOldPosts,
 } from '@/services/postService';
 import { checkAndAwardBadges } from '@/services/badgeService';
 
@@ -462,7 +463,16 @@ export const getExplorePosts = async (
   try {
     const { type, sort } = req.query;
 
-    const filter: Record<string, unknown> = { status: 'AVAILABLE' };
+    // Cập nhật bài quá hạn về HIDDEN trước khi query — fire-and-forget
+    expireOldPosts().catch((err) =>
+      logger.error('[getExplorePosts] expireOldPosts failed', { error: err })
+    );
+
+    const now = new Date();
+    const filter: Record<string, unknown> = {
+      status: 'AVAILABLE',
+      expiryDate: { $gt: now },
+    };
 
     if (type && typeof type === 'string') {
       filter.type = type;
@@ -576,9 +586,16 @@ export const searchMapPosts = async (
       return;
     }
 
-    // Chỉ hiển thị bài đăng AVAILABLE trên bản đồ
+    // Cập nhật bài quá hạn về HIDDEN trước khi query — fire-and-forget
+    expireOldPosts().catch((err) =>
+      logger.error('[searchMapPosts] expireOldPosts failed', { error: err })
+    );
+
+    const now = new Date();
+    // Chỉ hiển thị bài đăng AVAILABLE chưa hết hạn trên bản đồ
     const filter: Record<string, unknown> = {
       status: 'AVAILABLE',
+      expiryDate: { $gt: now },
       location: {
         $near: {
           $geometry: {

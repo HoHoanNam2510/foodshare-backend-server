@@ -89,3 +89,10 @@ export const updateProfileSchema = z.object({
     .optional(),
   paymentInfo: paymentInfoSchema.optional(),
 });
+
+export const kycResubmitSchema = z.object({
+  kycDocuments: z
+    .array(z.string().url('URL ảnh không hợp lệ'))
+    .min(1, 'Cần ít nhất 1 ảnh KYC')
+    .max(5, 'Tối đa 5 ảnh KYC'),
+});

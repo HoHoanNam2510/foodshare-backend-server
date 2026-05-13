@@ -113,6 +113,7 @@ export const getUsersQuerySchema = z.object({
   status: userStatusSchema.optional(),
   authProvider: authProviderSchema.optional(),
   kycStatus: kycStatusSchema.optional(),
+  pendingKycStatus: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
   isProfileCompleted: z
     .enum(['true', 'false'])
     .transform((value) => value === 'true')

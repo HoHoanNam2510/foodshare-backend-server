@@ -1,6 +1,7 @@
 // src/middlewares/authMiddleware.ts
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import User from '@/models/User';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key_for_dev';
 
@@ -71,6 +72,43 @@ export const verifyAdmin = (
     res.status(403).json({
       success: false,
       message: 'Bạn không có quyền truy cập tài nguyên này',
+    });
+    return;
+  }
+
+  next();
+};
+
+/**
+ * Kiểm tra grace period KYC cho STORE accounts.
+ * Nếu kycGracePeriodEndsAt đã qua → tự động khóa tài khoản (status=BANNED) và trả 403.
+ * Phải dùng sau verifyAuth.
+ */
+export const verifyStoreActive = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  if (!req.user || req.user.role !== 'STORE') {
+    next();
+    return;
+  }
+
+  const user = await User.findById(req.user.id).select(
+    'kycGracePeriodEndsAt status'
+  );
+  if (!user) {
+    next();
+    return;
+  }
+
+  if (user.kycGracePeriodEndsAt && new Date() > user.kycGracePeriodEndsAt) {
+    await User.findByIdAndUpdate(user._id, { status: 'BANNED' });
+    res.status(403).json({
+      success: false,
+      message:
+        'Tài khoản cửa hàng đã bị khóa do không gia hạn xác minh KYC trong thời hạn.',
+      errorCode: 'STORE_KYC_EXPIRED',
     });
     return;
   }

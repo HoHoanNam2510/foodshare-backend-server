@@ -12,6 +12,7 @@ import {
   updateProfile,
   updateMyLocation,
   registerStore,
+  resubmitKyc,
   deleteMyAccount,
   getMyImpact,
 } from '../controllers/authController';
@@ -40,6 +41,7 @@ import {
   updateProfileSchema,
   updateLocationSchema,
   registerStoreSchema,
+  kycResubmitSchema,
 } from '../validations/authValidation';
 
 const router = Router();
@@ -104,6 +106,14 @@ router.post(
   verifyAuth,
   validateBody(registerStoreSchema),
   registerStore
+);
+
+// [POST] /api/auth/kyc-resubmit  (STORE tái nộp KYC docs để admin xét duyệt)
+router.post(
+  '/kyc-resubmit',
+  verifyAuth,
+  validateBody(kycResubmitSchema),
+  resubmitKyc
 );
 
 // [POST] /api/auth/logout

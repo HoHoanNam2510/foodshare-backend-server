@@ -913,6 +913,73 @@ export const registerStore = async (
   }
 };
 
+// --- Nộp lại KYC docs (STORE đã được duyệt muốn cập nhật) ---
+export const resubmitKyc = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy người dùng',
+      });
+      return;
+    }
+
+    if (user.role !== 'STORE') {
+      res.status(403).json({
+        success: false,
+        message: 'Chỉ tài khoản cửa hàng mới có thể nộp lại KYC',
+      });
+      return;
+    }
+
+    if (user.pendingKycStatus === 'PENDING') {
+      res.status(409).json({
+        success: false,
+        message:
+          'Bạn đã có hồ sơ KYC đang chờ admin xét duyệt. Vui lòng chờ kết quả.',
+      });
+      return;
+    }
+
+    const { kycDocuments } = req.body;
+
+    user.pendingKycDocuments = kycDocuments;
+    user.pendingKycStatus = 'PENDING';
+    user.kycGracePeriodEndsAt = null;
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã nộp hồ sơ KYC mới. Vui lòng chờ Admin xét duyệt.',
+      data: sanitizeUserData(user),
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Nộp lại KYC thất bại';
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: errorMessage,
+    });
+  }
+};
+
 // --- Xóa tài khoản của chính mình (Soft Delete + Cascade) ---
 export const deleteMyAccount = async (
   req: Request,

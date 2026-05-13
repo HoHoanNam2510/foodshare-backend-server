@@ -112,11 +112,16 @@ export async function runAIModerationJob(
     if (!post || post.status !== 'PENDING_REVIEW') return null;
 
     const config = await SystemConfig.findOne();
+
+    // Khi admin tắt AI moderation, không chạy cho bất kỳ trigger nào (kể cả ON_CREATE/ON_UPDATE).
+    // Scheduler đã tự check enabled; guard này đảm bảo on-create/on-update cũng tuân thủ.
+    if (!config?.aiModeration?.enabled) return null;
+
     const rejectThreshold =
-      config?.aiModeration?.trustScoreThresholds?.reject ??
+      config.aiModeration.trustScoreThresholds?.reject ??
       DEFAULT_REJECT_THRESHOLD;
     const approveThreshold =
-      config?.aiModeration?.trustScoreThresholds?.approve ??
+      config.aiModeration.trustScoreThresholds?.approve ??
       DEFAULT_APPROVE_THRESHOLD;
 
     const { trustScore, reason } = await moderatePostWithAI({
@@ -269,6 +274,22 @@ export async function getAdminPostList(
 }
 
 // =============================================
+// EXPIRY AUTO-HIDE
+// =============================================
+
+// Chuyển tất cả bài quá hạn sang HIDDEN. Gọi fire-and-forget tại các endpoint public
+// để tránh cần scheduler riêng trong giai đoạn dev.
+export async function expireOldPosts(): Promise<void> {
+  await Post.updateMany(
+    {
+      status: { $in: ['AVAILABLE', 'BOOKED'] },
+      expiryDate: { $lt: new Date() },
+    },
+    { $set: { status: 'HIDDEN' } }
+  );
+}
+
+// =============================================
 // HOME SCREEN
 // =============================================
 
@@ -309,7 +330,12 @@ export async function getHomePostsFeed(
   query: HomePostsQuery
 ): Promise<Array<Record<string, unknown>>> {
   const maxItems = Math.min(query.limit ?? 6, 20);
-  const filter: Record<string, unknown> = { status: 'AVAILABLE', type };
+  const now = new Date();
+  const filter: Record<string, unknown> = {
+    status: 'AVAILABLE',
+    type,
+    expiryDate: { $gt: now },
+  };
 
   if (query.categorySlug && query.categorySlug !== 'all') {
     filter.category = query.categorySlug;

@@ -18,6 +18,7 @@ type UserListQuery = {
   status?: IUser['status'];
   authProvider?: IUser['authProvider'];
   kycStatus?: IUser['kycStatus'];
+  pendingKycStatus?: IUser['pendingKycStatus'];
   isProfileCompleted?: boolean;
   page?: number;
   limit?: number;
@@ -85,6 +86,10 @@ function buildUserFilter(query: UserListQuery): Record<string, unknown> {
 
   if (query.kycStatus) {
     filters.kycStatus = query.kycStatus;
+  }
+
+  if (query.pendingKycStatus) {
+    filters.pendingKycStatus = query.pendingKycStatus;
   }
 
   if (typeof query.isProfileCompleted === 'boolean') {
@@ -370,7 +375,33 @@ export async function reviewKyc(
     throw new UserServiceError('Không tìm thấy người dùng', 404);
   }
 
-  // Chỉ xét duyệt user đang ở trạng thái PENDING_KYC
+  // Case B: STORE tái nộp KYC (pendingKycStatus=PENDING)
+  if (user.role === 'STORE') {
+    if (user.pendingKycStatus !== 'PENDING') {
+      throw new UserServiceError(
+        'Tài khoản cửa hàng này không có đơn tái xét duyệt KYC nào đang chờ',
+        400
+      );
+    }
+
+    if (action === 'APPROVE') {
+      user.kycDocuments = user.pendingKycDocuments;
+      user.pendingKycDocuments = [];
+      user.pendingKycStatus = null;
+      user.kycGracePeriodEndsAt = null;
+      user.kycStatus = 'VERIFIED';
+    } else {
+      user.pendingKycStatus = 'REJECTED';
+      const gracePeriodEnd = new Date();
+      gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 30);
+      user.kycGracePeriodEndsAt = gracePeriodEnd;
+    }
+
+    const updatedUser = await user.save();
+    return toSafeUser(updatedUser);
+  }
+
+  // Case A: Đăng ký ban đầu (role=USER, status=PENDING_KYC)
   if (user.status !== 'PENDING_KYC') {
     throw new UserServiceError(
       'Tài khoản này không có đơn đăng ký KYC đang chờ duyệt',
@@ -388,8 +419,7 @@ export async function reviewKyc(
     user.status = 'ACTIVE';
   } else {
     user.kycStatus = 'REJECTED';
-    user.status = 'ACTIVE'; // Trả về ACTIVE sau khi từ chối, cho phép nộp lại
-    // Không xóa storeInfo và kycDocuments — giữ lại để user có thể xem lại và nộp lại
+    user.status = 'ACTIVE';
   }
 
   const updatedUser = await user.save();
