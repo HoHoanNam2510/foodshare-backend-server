@@ -347,7 +347,7 @@ export async function getHomePostsFeed(
     .limit(maxItems)
     .lean();
 
-  return (posts as Array<Record<string, unknown>>).map((post) => {
+  return (posts as unknown as Array<Record<string, unknown>>).map((post) => {
     const loc = post.location as IPost['location'];
     const coords = loc?.coordinates;
     let distanceLabel: string | undefined;

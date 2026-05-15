@@ -25,6 +25,7 @@ import statisticsRoutes from './routes/statisticsRoutes';
 import trashRoutes from './routes/trashRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import categoryRoutes from './routes/categoryRoutes';
+import postTemplateRoutes from './routes/postTemplateRoutes';
 import { seedCategories } from './seeds/categorySeeder';
 import logger from './utils/logger';
 import { startScheduler } from './utils/scheduler';
@@ -84,6 +85,7 @@ app.use('/api/translate', translateRoutes);
 app.use('/api/admin/trash', trashRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/post-templates', postTemplateRoutes);
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
