@@ -152,7 +152,7 @@ export const sendCreatePostPasscode = async (
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi gửi passcode',
-      error: errorMessage,
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
     });
   }
 };
@@ -306,7 +306,11 @@ export const createPost = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
     return;
   }
 
@@ -348,7 +352,11 @@ export const getMyPosts = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -440,7 +448,11 @@ export const updatePost = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -476,7 +488,11 @@ export const deletePost = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -528,7 +544,11 @@ export const getExplorePosts = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -586,7 +606,11 @@ export const getPostDetail = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -662,7 +686,11 @@ export const searchMapPosts = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -692,7 +720,11 @@ export const getFreshlyShared = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -718,7 +750,11 @@ export const getMarketTeaser = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -732,10 +768,15 @@ export const adminGetPosts = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { status, page, limit, sortBy, sortOrder } = req.query;
+    const { status, type, page, limit, sortBy, sortOrder } = req.query;
+
+    expireOldPosts().catch((err) =>
+      logger.error('[adminGetPosts] expireOldPosts failed', { error: err })
+    );
 
     const result = await getAdminPostList({
       status: status as IPost['status'] | undefined,
+      type: type as IPost['type'] | undefined,
       page: page ? parseInt(page as string, 10) : undefined,
       limit: limit ? parseInt(limit as string, 10) : undefined,
       sortBy: sortBy as 'createdAt' | 'updatedAt' | undefined,
@@ -752,7 +793,11 @@ export const adminGetPosts = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -796,7 +841,11 @@ export const adminUpdatePost = async (
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };
 
@@ -826,18 +875,57 @@ export const adminToggleHidePost = async (
       return;
     }
 
-    post.status = 'HIDDEN';
-    await post.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Đã khóa bài viết thành công',
-      data: post,
-    });
+    if (post.status === 'HIDDEN') {
+      if (post.expiryDate && post.expiryDate < new Date()) {
+        res.status(400).json({
+          success: false,
+          message: 'Không thể hiển thị bài đăng đã hết hạn sử dụng',
+          errorCode: 'POST_EXPIRED',
+        });
+        return;
+      }
+      if (post.remainingQuantity <= 0) {
+        res.status(400).json({
+          success: false,
+          message:
+            'Không thể hiển thị bài đăng đã hết hàng. Hãy cập nhật số lượng trước.',
+          errorCode: 'POST_OUT_OF_STOCK',
+        });
+        return;
+      }
+      post.status = 'AVAILABLE';
+      await post.save();
+      res.status(200).json({
+        success: true,
+        message: 'Đã hiển thị lại bài đăng thành công',
+        data: post,
+      });
+    } else {
+      const hideableStatuses = ['AVAILABLE', 'PENDING_REVIEW'];
+      if (!hideableStatuses.includes(post.status)) {
+        res.status(400).json({
+          success: false,
+          message: `Không thể ẩn bài đăng ở trạng thái "${post.status}". Chỉ ẩn được bài đang hiển thị hoặc chờ duyệt.`,
+          errorCode: 'INVALID_POST_STATUS',
+        });
+        return;
+      }
+      post.status = 'HIDDEN';
+      await post.save();
+      res.status(200).json({
+        success: true,
+        message: 'Đã ẩn bài đăng thành công',
+        data: post,
+      });
+    }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
     res
       .status(500)
-      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+      .json({
+        success: false,
+        message: 'Lỗi server',
+        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+      });
   }
 };

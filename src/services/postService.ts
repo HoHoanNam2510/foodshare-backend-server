@@ -221,6 +221,7 @@ type SortOrder = 'asc' | 'desc';
 
 type AdminPostListQuery = {
   status?: IPost['status'];
+  type?: IPost['type'];
   page?: number;
   limit?: number;
   sortBy?: 'createdAt' | 'updatedAt';
@@ -245,9 +246,8 @@ export async function getAdminPostList(
   const skip = (page - 1) * limit;
 
   const filter: Record<string, unknown> = {};
-  if (query.status) {
-    filter.status = query.status;
-  }
+  if (query.status) filter.status = query.status;
+  if (query.type) filter.type = query.type;
 
   const sortField = query.sortBy || 'createdAt';
   const sortOrder = query.sortOrder === 'asc' ? 1 : -1;
