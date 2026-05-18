@@ -3,8 +3,6 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '@/models/User';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key_for_dev';
-
 export interface AuthPayload {
   id: string;
   role: string;
@@ -38,7 +36,10 @@ export const verifyAuth = (
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET as string
+    ) as AuthPayload;
 
     // Gắn thông tin user vừa giải mã được vào object request (req)
     // Để các Controller phía sau có thể lấy ra dùng (ví dụ: req.user.id)
@@ -131,7 +132,10 @@ export const optionalAuth = (
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     try {
-      req.user = jwt.verify(token, JWT_SECRET) as AuthPayload;
+      req.user = jwt.verify(
+        token,
+        process.env.JWT_SECRET as string
+      ) as AuthPayload;
     } catch {
       // Token không hợp lệ → bỏ qua, không gắn user
     }

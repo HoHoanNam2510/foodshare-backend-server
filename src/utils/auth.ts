@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key_for_dev';
+const JWT_SECRET = process.env.JWT_SECRET as string;
 const EXPIRES_IN = '7d'; // Token sống được 7 ngày
 
 // 1. Hàm băm (hash) mật khẩu
