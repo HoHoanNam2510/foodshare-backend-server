@@ -145,6 +145,62 @@ export async function broadcastNotification(
   }
 }
 
+// =============================================
+// USER-FACING NOTIFICATION CRUD
+// =============================================
+
+export interface NotificationPage {
+  data: unknown[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export async function getUserNotifications(
+  userId: string,
+  page: number,
+  limit: number
+): Promise<NotificationPage> {
+  const skip = (page - 1) * limit;
+  const [notifications, total] = await Promise.all([
+    Notification.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Notification.countDocuments({ userId }),
+  ]);
+  return {
+    data: notifications,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  };
+}
+
+export async function getUserUnreadCount(userId: string): Promise<number> {
+  return Notification.countDocuments({ userId, isRead: false });
+}
+
+export async function markNotificationRead(
+  userId: string,
+  id: string
+): Promise<unknown | null> {
+  return Notification.findOneAndUpdate({ _id: id, userId }, { isRead: true }, { new: true });
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  await Notification.updateMany({ userId, isRead: false }, { isRead: true });
+}
+
+export async function deleteUserNotification(
+  userId: string,
+  id: string
+): Promise<unknown | null> {
+  return Notification.findOneAndDelete({ _id: id, userId });
+}
+
+export async function saveUserPushToken(userId: string, token: string): Promise<void> {
+  await User.findByIdAndUpdate(userId, { expoPushToken: token });
+}
+
 export async function getBroadcastHistory(
   page: number = 1,
   limit: number = 20

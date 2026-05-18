@@ -1,48 +1,23 @@
 import { Request, Response } from 'express';
-import User from '@/models/User';
-import PendingRegistration from '@/models/PendingRegistration';
-import { hashPassword, comparePassword, generateToken } from '@/utils/auth';
-import { verifyGoogleIdToken } from '@/utils/googleAuth';
-import { sendVerificationEmail } from '@/utils/emailVerification';
 import {
-  deleteImageByUrl,
-  deleteMultipleImagesByUrl,
-} from '@/services/uploadService';
-import { checkAndAwardBadges } from '@/services/badgeService';
+  AuthServiceError,
+  initiateRegistration,
+  verifyRegistrationCode,
+  completeRegistration,
+  loginWithPassword,
+  loginWithGoogle,
+  getUserById,
+  finishProfile,
+  updateUserProfile,
+  updateUserLocation,
+  applyForStore,
+  resubmitKycDocuments,
+  setGooglePassword,
+  changeUserPassword,
+} from '@/services/authService';
 import { softDeleteUser, SoftDeleteError } from '@/services/softDeleteService';
+import { checkAndAwardBadges } from '@/services/badgeService';
 import { getImpactStats, UserServiceError } from '@/services/userService';
-
-const CODE_LENGTH = 6;
-const CODE_EXPIRE_MINUTES = 10;
-const MAX_SEND_PER_MINUTE = 3;
-
-function generateNumericCode(length: number): string {
-  let code = '';
-  for (let i = 0; i < length; i += 1) {
-    code += Math.floor(Math.random() * 10).toString();
-  }
-  return code;
-}
-
-function hasRequiredProfileInfo(user: {
-  phoneNumber?: string;
-  defaultAddress?: string;
-}): boolean {
-  const hasPhoneNumber = Boolean(user.phoneNumber && user.phoneNumber.trim());
-  const hasDefaultAddress = Boolean(
-    user.defaultAddress && user.defaultAddress.trim()
-  );
-
-  return hasPhoneNumber && hasDefaultAddress;
-}
-
-function sanitizeUserData<
-  TUser extends { toObject: () => Record<string, unknown> },
->(user: TUser): Record<string, unknown> {
-  const userData = user.toObject();
-  delete userData.password;
-  return userData;
-}
 
 // --- BƯỚC 1: GỬI MÃ XÁC MINH EMAIL (Chưa tạo account) ---
 export const registerSendCode = async (
@@ -52,136 +27,58 @@ export const registerSendCode = async (
   try {
     const { email, password, fullName, phoneNumber } = req.body;
 
-    const normalizedEmail = email.toLowerCase();
-
-    // Kiểm tra User đã tồn tại chưa
-    const existingUser = await User.findOne({
-      $or: [
-        { email: normalizedEmail },
-        ...(phoneNumber ? [{ phoneNumber }] : []),
-      ],
-    });
-
-    if (existingUser) {
-      if (existingUser.email === normalizedEmail) {
-        const provider = existingUser.authProvider;
-        if (provider === 'GOOGLE') {
-          res.status(409).json({
-            success: false,
-            message:
-              'Email này đã được đăng ký bằng Google. Vui lòng đăng nhập bằng Google.',
-          });
-        } else {
-          res.status(409).json({
-            success: false,
-            message: 'Email này đã được đăng ký. Vui lòng đăng nhập.',
-          });
-        }
-      } else {
-        res.status(409).json({
-          success: false,
-          message: 'Số điện thoại đã được sử dụng',
-        });
-      }
-      return;
-    }
-
-    // Rate limit: tối đa 3 lần/phút cho cùng email
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-    const recentCount = await PendingRegistration.countDocuments({
-      email: normalizedEmail,
-      createdAt: { $gte: oneMinuteAgo },
-    });
-
-    if (recentCount >= MAX_SEND_PER_MINUTE) {
-      res.status(429).json({
-        success: false,
-        message:
-          'Bạn đã gửi mã quá nhiều lần. Vui lòng thử lại sau khoảng 1 phút',
-      });
-      return;
-    }
-
-    // Hash password trước khi lưu tạm
-    const hashedPassword = await hashPassword(password);
-    const code = generateNumericCode(CODE_LENGTH);
-    const expiresAt = new Date(Date.now() + CODE_EXPIRE_MINUTES * 60 * 1000);
-
-    // Xóa các pending cũ của email này
-    await PendingRegistration.deleteMany({ email: normalizedEmail });
-
-    // Lưu thông tin đăng ký tạm + mã xác minh
-    const pending = await PendingRegistration.create({
-      email: normalizedEmail,
+    const result = await initiateRegistration({
+      email,
+      password,
       fullName,
-      phoneNumber: phoneNumber || '',
-      hashedPassword,
-      code,
-      expiresAt,
+      phoneNumber,
     });
-
-    // Gửi email xác minh
-    try {
-      await sendVerificationEmail({
-        email: normalizedEmail,
-        code,
-        expiresInMinutes: CODE_EXPIRE_MINUTES,
-      });
-    } catch (sendError) {
-      await PendingRegistration.findByIdAndDelete(pending._id);
-      throw sendError;
-    }
 
     res.status(200).json({
       success: true,
       message: 'Đã gửi mã xác minh đến email của bạn',
-      data: { expiresInMinutes: CODE_EXPIRE_MINUTES },
+      data: result,
     });
   } catch (error: unknown) {
-    console.error('registerSendCode error:', error);
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi gửi mã xác minh',
-      error: errorMessage,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: 'Lỗi server khi gửi mã xác minh',
+        error: errorMessage,
+      });
   }
 };
 
-// --- CHỈ XÁC MINH MÃ (Không tạo account — dùng cho admin tạo tài khoản) ---
+// --- CHỈ XÁC MINH MÃ (Không tạo account) ---
 export const verifyCodeOnly = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const { email, code } = req.body;
-    const normalizedEmail = email.toLowerCase();
+    const valid = await verifyRegistrationCode(email, code);
 
-    const pending = await PendingRegistration.findOne({
-      email: normalizedEmail,
-      code,
-      expiresAt: { $gt: new Date() },
-    });
-
-    if (!pending) {
-      res.status(400).json({
-        success: false,
-        message: 'Mã xác minh không hợp lệ hoặc đã hết hạn',
-      });
+    if (!valid) {
+      res
+        .status(400)
+        .json({
+          success: false,
+          message: 'Mã xác minh không hợp lệ hoặc đã hết hạn',
+        });
       return;
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Mã xác minh hợp lệ',
-    });
+    res.status(200).json({ success: true, message: 'Mã xác minh hợp lệ' });
   } catch (error: unknown) {
-    console.error('verifyCodeOnly error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-    });
+    res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 };
 
@@ -192,240 +89,88 @@ export const registerVerify = async (
 ): Promise<void> => {
   try {
     const { email, code } = req.body;
-    const normalizedEmail = email.toLowerCase();
-
-    // Tìm pending registration còn hiệu lực
-    const pending = await PendingRegistration.findOne({
-      email: normalizedEmail,
-      code,
-      expiresAt: { $gt: new Date() },
-    });
-
-    if (!pending) {
-      res.status(400).json({
-        success: false,
-        message: 'Mã xác minh không hợp lệ hoặc đã hết hạn',
-      });
-      return;
-    }
-
-    // Kiểm tra lại email chưa bị đăng ký (race condition)
-    const existingUser = await User.findOne({ email: normalizedEmail });
-    if (existingUser) {
-      await PendingRegistration.deleteMany({ email: normalizedEmail });
-      res.status(409).json({
-        success: false,
-        message: 'Email đã được sử dụng',
-      });
-      return;
-    }
-
-    // Tạo User thật
-    const isProfileCompleted = hasRequiredProfileInfo({
-      phoneNumber: pending.phoneNumber,
-      defaultAddress: '',
-    });
-
-    const newUser = await User.create({
-      email: normalizedEmail,
-      password: pending.hashedPassword,
-      fullName: pending.fullName,
-      phoneNumber: pending.phoneNumber || undefined,
-      defaultAddress: '',
-      authProvider: 'LOCAL',
-      isEmailVerified: true, // Đã xác minh qua code
-      isProfileCompleted,
-      role: 'USER',
-    });
-
-    // Dọn dẹp pending
-    await PendingRegistration.deleteMany({ email: normalizedEmail });
-
-    // Auto-login: tạo token
-    const token = generateToken(newUser._id.toString(), newUser.role);
-    const userToReturn = sanitizeUserData(newUser);
+    const result = await completeRegistration({ email, code });
 
     res.status(201).json({
       success: true,
       message: 'Đăng ký tài khoản thành công',
-      token,
-      data: userToReturn,
-      onboardingRequired: !newUser.isProfileCompleted,
+      token: result.token,
+      data: result.user,
+      onboardingRequired: result.onboardingRequired,
     });
   } catch (error: unknown) {
-    console.error('registerVerify error:', error);
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
-  }
-};
-
-// --- API ĐĂNG NHẬP (Dùng chung cho ADMIN, USER, STORE) ---
-export const login = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { email, password } = req.body;
-
-    // 1. Tìm user và ép Mongoose trả về cả trường password
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      '+password'
-    );
-
-    if (!user) {
-      res
-        .status(404)
-        .json({ success: false, message: 'Tài khoản không tồn tại' });
-      return;
-    }
-
-    // 2. Kiểm tra tài khoản có bị khóa không
-    if (user.status === 'BANNED') {
-      res
-        .status(403)
-        .json({ success: false, message: 'Tài khoản của bạn đã bị khóa' });
-      return;
-    }
-
-    if (user.authProvider === 'GOOGLE' && !user.password) {
-      res.status(400).json({
-        success: false,
-        message:
-          'Tài khoản này đăng ký bằng Google. Vui lòng đăng nhập bằng Google',
-      });
-      return;
-    }
-
-    // 3. Kiểm tra mật khẩu
-    if (!user.password) {
-      res.status(400).json({
-        success: false,
-        message: 'Tài khoản chưa có mật khẩu, vui lòng đăng nhập bằng Google',
-      });
-      return;
-    }
-
-    const isMatch = await comparePassword(password, user.password);
-    if (!isMatch) {
-      res
-        .status(401)
-        .json({ success: false, message: 'Mật khẩu không chính xác' });
-      return;
-    }
-
-    // 4. Tạo Token và trả về
-    const token = generateToken(user._id.toString(), user.role);
-
-    const userProfile = sanitizeUserData(user);
-
-    res.status(200).json({
-      success: true,
-      message: 'Đăng nhập thành công',
-      token,
-      data: userProfile,
-      onboardingRequired: !user.isProfileCompleted,
-    });
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-
     res
       .status(500)
       .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
-// --- API ĐĂNG NHẬP BẰNG GOOGLE (Mobile OAuth) ---
+// --- API ĐĂNG NHẬP ---
+export const login = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+    const result = await loginWithPassword({ email, password });
+
+    res.status(200).json({
+      success: true,
+      message: 'Đăng nhập thành công',
+      token: result.token,
+      data: result.user,
+      onboardingRequired: result.onboardingRequired,
+    });
+  } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// --- API ĐĂNG NHẬP BẰNG GOOGLE ---
 export const googleLogin = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const { idToken } = req.body;
-    const googleUser = await verifyGoogleIdToken(idToken);
-
-    let user = await User.findOne({
-      $or: [{ googleId: googleUser.googleId }, { email: googleUser.email }],
-    }).select('+password');
-
-    if (!user) {
-      const isProfileCompleted = hasRequiredProfileInfo({
-        phoneNumber: '',
-        defaultAddress: '',
-      });
-
-      user = await User.create({
-        email: googleUser.email,
-        googleId: googleUser.googleId,
-        authProvider: 'GOOGLE',
-        isEmailVerified: true,
-        isProfileCompleted,
-        fullName: googleUser.fullName,
-        avatar: googleUser.avatar || '',
-        role: 'USER',
-      });
-    } else {
-      if (user.status === 'BANNED') {
-        res
-          .status(403)
-          .json({ success: false, message: 'Tài khoản của bạn đã bị khóa' });
-        return;
-      }
-
-      let shouldSave = false;
-
-      if (!user.googleId) {
-        user.googleId = googleUser.googleId;
-        shouldSave = true;
-      }
-
-      if (!user.avatar && googleUser.avatar) {
-        user.avatar = googleUser.avatar;
-        shouldSave = true;
-      }
-
-      if (!user.fullName && googleUser.fullName) {
-        user.fullName = googleUser.fullName;
-        shouldSave = true;
-      }
-
-      // Google đã xác minh email — đảm bảo flag luôn đúng cho tài khoản cũ
-      if (!user.isEmailVerified) {
-        user.isEmailVerified = true;
-        shouldSave = true;
-      }
-
-      const computedProfileCompleted = hasRequiredProfileInfo(user);
-      if (user.isProfileCompleted !== computedProfileCompleted) {
-        user.isProfileCompleted = computedProfileCompleted;
-        shouldSave = true;
-      }
-
-      if (shouldSave) {
-        await user.save();
-      }
-    }
-
-    const token = generateToken(user._id.toString(), user.role);
-    const userProfile = sanitizeUserData(user);
+    const result = await loginWithGoogle(idToken);
 
     res.status(200).json({
       success: true,
       message: 'Đăng nhập Google thành công',
-      token,
-      data: userProfile,
-      onboardingRequired: !user.isProfileCompleted,
+      token: result.token,
+      data: result.user,
+      onboardingRequired: result.onboardingRequired,
     });
   } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Đăng nhập Google thất bại';
-
-    res.status(400).json({
-      success: false,
-      message: 'Đăng nhập Google thất bại',
-      error: errorMessage,
-    });
+    res
+      .status(400)
+      .json({
+        success: false,
+        message: 'Đăng nhập Google thất bại',
+        error: errorMessage,
+      });
   }
 };
 
@@ -436,105 +181,53 @@ export const completeProfile = async (
 ): Promise<void> => {
   try {
     const userId = req.user?.id;
-    const { phoneNumber, defaultAddress } = req.body;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
+      res
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 
-    const duplicatePhoneUser = await User.findOne({
-      phoneNumber,
-      _id: { $ne: userId },
-    });
-
-    if (duplicatePhoneUser) {
-      res.status(409).json({
-        success: false,
-        message: 'Số điện thoại đã được sử dụng',
-      });
-      return;
-    }
-
-    const isProfileCompleted = hasRequiredProfileInfo({
-      phoneNumber,
-      defaultAddress,
-    });
-
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          phoneNumber,
-          defaultAddress,
-          isProfileCompleted,
-        },
-      },
-      { new: true }
-    );
-
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
-      });
-      return;
-    }
+    const { phoneNumber, defaultAddress } = req.body;
+    const result = await finishProfile({ userId, phoneNumber, defaultAddress });
 
     res.status(200).json({
       success: true,
       message: 'Hoàn thiện hồ sơ thành công',
-      data: sanitizeUserData(user),
-      onboardingRequired: !user.isProfileCompleted,
+      data: result.user,
+      onboardingRequired: result.onboardingRequired,
     });
 
-    // Trigger badge check sau khi hồ sơ hoàn thiện (không block response)
-    if (user.isProfileCompleted) {
-      try {
-        await checkAndAwardBadges(userId, 'PROFILE_COMPLETED');
-      } catch (err) {
+    if (!result.onboardingRequired) {
+      checkAndAwardBadges(userId, 'PROFILE_COMPLETED').catch((err) => {
         console.warn(
           '[AuthController] badge check (PROFILE_COMPLETED) failed:',
           err
         );
-      }
+      });
     }
   } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Hoàn thiện hồ sơ thất bại';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
 // --- API ĐĂNG XUẤT ---
-export const logout = async (req: Request, res: Response): Promise<void> => {
-  try {
-    // JWT là stateless nên server không cần invalidate token.
-    // Client sẽ tự xoá token ở local storage.
-    // Endpoint này tồn tại để đảm bảo API contract rõ ràng
-    // và có thể mở rộng thêm logic (blacklist token, log activity...) sau này.
-    res.status(200).json({
-      success: true,
-      message: 'Đăng xuất thành công',
-    });
-  } catch (error: unknown) {
-    const errorMessage =
-      error instanceof Error ? error.message : 'Đăng xuất thất bại';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
-  }
+export const logout = async (_req: Request, res: Response): Promise<void> => {
+  res.status(200).json({ success: true, message: 'Đăng xuất thành công' });
 };
 
 // --- API THIẾT LẬP MẬT KHẨU CHO USER GOOGLE ---
@@ -544,59 +237,39 @@ export const setPassword = async (
 ): Promise<void> => {
   try {
     const userId = req.user?.id;
-    const { newPassword } = req.body;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
+      res
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 
-    const user = await User.findById(userId).select('+password');
+    const { newPassword } = req.body;
+    const user = await setGooglePassword({ userId, newPassword });
 
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: 'Thiết lập mật khẩu thành công',
+        data: user,
       });
-      return;
-    }
-
-    if (user.authProvider !== 'GOOGLE') {
-      res.status(400).json({
-        success: false,
-        message: 'Chỉ tài khoản Google mới dùng endpoint này',
-      });
-      return;
-    }
-
-    if (user.password) {
-      res.status(409).json({
-        success: false,
-        message: 'Tài khoản đã có mật khẩu',
-      });
-      return;
-    }
-
-    user.password = await hashPassword(newPassword);
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Thiết lập mật khẩu thành công',
-      data: sanitizeUserData(user),
-    });
   } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Thiết lập mật khẩu thất bại';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
@@ -606,37 +279,37 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
+      res
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 
-    const user = await User.findById(userId);
+    const user = await getUserById(userId);
 
     if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
-      });
+      res
+        .status(404)
+        .json({ success: false, message: 'Không tìm thấy người dùng' });
       return;
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Lấy thông tin người dùng thành công',
-      data: sanitizeUserData(user),
-    });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: 'Lấy thông tin người dùng thành công',
+        data: user,
+      });
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : 'Lấy thông tin thất bại';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
@@ -649,10 +322,12 @@ export const updateProfile = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
+      res
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 
@@ -664,107 +339,53 @@ export const updateProfile = async (
       storeInfo,
       paymentInfo,
     } = req.body;
-
-    // Kiểm tra trùng số điện thoại
-    if (phoneNumber) {
-      const duplicatePhoneUser = await User.findOne({
-        phoneNumber,
-        _id: { $ne: userId },
-      });
-
-      if (duplicatePhoneUser) {
-        res.status(409).json({
-          success: false,
-          message: 'Số điện thoại đã được sử dụng',
-        });
-        return;
-      }
-    }
-
-    const updateData: Record<string, unknown> = {};
-
-    if (fullName !== undefined) updateData.fullName = fullName;
-    if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
-    if (defaultAddress !== undefined)
-      updateData.defaultAddress = defaultAddress;
-    if (avatar !== undefined) updateData.avatar = avatar;
-    if (storeInfo !== undefined) updateData.storeInfo = storeInfo;
-    if (paymentInfo !== undefined) updateData.paymentInfo = paymentInfo;
-
-    // Tính toán lại isProfileCompleted
-    const currentUser = await User.findById(userId);
-    if (!currentUser) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
-      });
-      return;
-    }
-
-    const mergedPhone =
-      phoneNumber !== undefined ? phoneNumber : currentUser.phoneNumber;
-    const mergedAddress =
-      defaultAddress !== undefined
-        ? defaultAddress
-        : currentUser.defaultAddress;
-    updateData.isProfileCompleted = hasRequiredProfileInfo({
-      phoneNumber: mergedPhone,
-      defaultAddress: mergedAddress,
-    });
-
-    // Xóa avatar cũ trên Cloudinary nếu đổi avatar mới
-    if (
-      avatar !== undefined &&
-      currentUser.avatar &&
-      avatar !== currentUser.avatar
-    ) {
-      deleteImageByUrl(currentUser.avatar).catch(() => {});
-    }
-
-    const user = await User.findByIdAndUpdate(
+    const user = await updateUserProfile({
       userId,
-      { $set: updateData },
-      { new: true }
-    );
-
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Cập nhật hồ sơ thành công',
-      data: sanitizeUserData(user),
+      updates: {
+        fullName,
+        phoneNumber,
+        defaultAddress,
+        avatar,
+        storeInfo,
+        paymentInfo,
+      },
     });
 
-    // Trigger badge check nếu profile vừa được hoàn thiện sau update
-    if (user.isProfileCompleted) {
-      try {
-        await checkAndAwardBadges(userId, 'PROFILE_COMPLETED');
-      } catch (err) {
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: 'Cập nhật hồ sơ thành công',
+        data: user,
+      });
+
+    const isCompleted = Boolean(
+      (user as Record<string, unknown>).isProfileCompleted
+    );
+    if (isCompleted) {
+      checkAndAwardBadges(userId, 'PROFILE_COMPLETED').catch((err) => {
         console.warn(
           '[AuthController] badge check (PROFILE_COMPLETED) after updateProfile failed:',
           err
         );
-      }
+      });
     }
   } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Cập nhật hồ sơ thất bại';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
-// --- API CẬP NHẬT VỊ TRÍ NGƯỜI DÙNG (User tự cập nhật location) ---
+// --- API CẬP NHẬT VỊ TRÍ NGƯỜI DÙNG ---
 export const updateMyLocation = async (
   req: Request,
   res: Response
@@ -773,54 +394,41 @@ export const updateMyLocation = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
+      res
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 
     const { longitude, latitude } = req.body;
+    const user = await updateUserLocation({ userId, longitude, latitude });
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          location: {
-            type: 'Point',
-            coordinates: [longitude, latitude],
-          },
-        },
-      },
-      { new: true }
-    );
-
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: 'Cập nhật vị trí thành công',
+        data: user,
       });
+  } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
       return;
     }
-
-    res.status(200).json({
-      success: true,
-      message: 'Cập nhật vị trí thành công',
-      data: sanitizeUserData(user),
-    });
-  } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : 'Cập nhật vị trí thất bại';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
-// --- API ĐĂNG KÝ CỬA HÀNG (Nâng cấp USER → STORE) ---
+// --- API ĐĂNG KÝ CỬA HÀNG ---
 export const registerStore = async (
   req: Request,
   res: Response
@@ -829,91 +437,45 @@ export const registerStore = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
-      return;
-    }
-
-    const user = await User.findById(userId);
-
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
-      });
-      return;
-    }
-
-    // Chỉ USER mới được đăng ký Store
-    if (user.role === 'STORE') {
-      res.status(409).json({
-        success: false,
-        message: 'Tài khoản của bạn đã là cửa hàng',
-      });
-      return;
-    }
-
-    if (user.role === 'ADMIN') {
-      res.status(403).json({
-        success: false,
-        message: 'Tài khoản Admin không thể đăng ký cửa hàng',
-      });
-      return;
-    }
-
-    // Kiểm tra profile đã hoàn thiện chưa
-    if (!user.isProfileCompleted) {
-      res.status(400).json({
-        success: false,
-        message:
-          'Vui lòng hoàn thiện hồ sơ cá nhân (số điện thoại, địa chỉ) trước khi đăng ký cửa hàng',
-      });
-      return;
-    }
-
-    // Kiểm tra đã có đơn đăng ký đang chờ duyệt
-    if (user.status === 'PENDING_KYC') {
-      res.status(409).json({
-        success: false,
-        message:
-          'Bạn đã có đơn đăng ký cửa hàng đang chờ duyệt. Vui lòng chờ Admin xét duyệt.',
-      });
+      res
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 
     const { storeInfo, kycDocuments, paymentInfo } = req.body;
-
-    // Cập nhật thông tin Store và KYC; chuyển status → PENDING_KYC
-    user.storeInfo = storeInfo;
-    user.kycDocuments = kycDocuments;
-    if (paymentInfo) user.paymentInfo = paymentInfo;
-    user.kycStatus = 'PENDING';
-    user.status = 'PENDING_KYC';
-    // Chưa chuyển role → vẫn là USER cho đến khi Admin duyệt
-
-    await user.save();
+    const user = await applyForStore({
+      userId,
+      storeInfo,
+      kycDocuments,
+      paymentInfo,
+    });
 
     res.status(200).json({
       success: true,
       message:
         'Đã gửi đơn đăng ký cửa hàng thành công. Vui lòng chờ Admin xét duyệt.',
-      data: sanitizeUserData(user),
+      data: user,
     });
   } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Đăng ký cửa hàng thất bại';
-
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
-// --- Nộp lại KYC docs (STORE đã được duyệt muốn cập nhật) ---
+// --- Nộp lại KYC docs ---
 export const resubmitKyc = async (
   req: Request,
   res: Response
@@ -922,65 +484,39 @@ export const resubmitKyc = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
-      return;
-    }
-
-    const user = await User.findById(userId);
-
-    if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
-      });
-      return;
-    }
-
-    if (user.role !== 'STORE') {
-      res.status(403).json({
-        success: false,
-        message: 'Chỉ tài khoản cửa hàng mới có thể nộp lại KYC',
-      });
-      return;
-    }
-
-    if (user.pendingKycStatus === 'PENDING') {
-      res.status(409).json({
-        success: false,
-        message:
-          'Bạn đã có hồ sơ KYC đang chờ admin xét duyệt. Vui lòng chờ kết quả.',
-      });
+      res
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 
     const { kycDocuments } = req.body;
-
-    user.pendingKycDocuments = kycDocuments;
-    user.pendingKycStatus = 'PENDING';
-    user.kycGracePeriodEndsAt = null;
-
-    await user.save();
+    const user = await resubmitKycDocuments({ userId, kycDocuments });
 
     res.status(200).json({
       success: true,
       message: 'Đã nộp hồ sơ KYC mới. Vui lòng chờ Admin xét duyệt.',
-      data: sanitizeUserData(user),
+      data: user,
     });
   } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Nộp lại KYC thất bại';
-    res.status(500).json({
-      success: false,
-      message: 'Lỗi server',
-      error: errorMessage,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
   }
 };
 
-// --- Xóa tài khoản của chính mình (Soft Delete + Cascade) ---
+// --- Xóa tài khoản của chính mình ---
 export const deleteMyAccount = async (
   req: Request,
   res: Response
@@ -1014,69 +550,37 @@ export const deleteMyAccount = async (
   }
 };
 
-// --- API ĐỔI MẬT KHẨU (Dành cho tài khoản LOCAL đã có password) ---
+// --- API ĐỔI MẬT KHẨU ---
 export const changePassword = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const userId = req.user?.id;
-    const { currentPassword, newPassword } = req.body;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
-      return;
-    }
-
-    const user = await User.findById(userId).select('+password');
-
-    if (!user) {
       res
-        .status(404)
-        .json({ success: false, message: 'Không tìm thấy người dùng' });
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 
-    if (!user.password) {
-      res.status(400).json({
-        success: false,
-        message:
-          'Tài khoản này chưa có mật khẩu. Vui lòng dùng endpoint set-password',
-      });
-      return;
-    }
+    const { currentPassword, newPassword } = req.body;
+    await changeUserPassword({ userId, currentPassword, newPassword });
 
-    const isMatch = await comparePassword(currentPassword, user.password);
-    if (!isMatch) {
-      res.status(401).json({
-        success: false,
-        message: 'Mật khẩu hiện tại không chính xác',
-        errorCode: 'WRONG_CURRENT_PASSWORD',
-      });
-      return;
-    }
-
-    const isSamePassword = await comparePassword(newPassword, user.password);
-    if (isSamePassword) {
-      res.status(400).json({
-        success: false,
-        message: 'Mật khẩu mới không được trùng với mật khẩu hiện tại',
-        errorCode: 'SAME_PASSWORD',
-      });
-      return;
-    }
-
-    user.password = await hashPassword(newPassword);
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Đổi mật khẩu thành công',
-    });
+    res.status(200).json({ success: true, message: 'Đổi mật khẩu thành công' });
   } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+        ...(error.errorCode && { errorCode: error.errorCode }),
+      });
+      return;
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Đổi mật khẩu thất bại';
     res
@@ -1085,8 +589,7 @@ export const changePassword = async (
   }
 };
 
-// --- HOME: Impact stats của user hiện tại ---
-// GET /api/auth/me/impact
+// --- HOME: Impact stats ---
 export const getMyImpact = async (
   req: Request,
   res: Response
@@ -1095,10 +598,12 @@ export const getMyImpact = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-      });
+      res
+        .status(401)
+        .json({
+          success: false,
+          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+        });
       return;
     }
 

@@ -1,16 +1,30 @@
-import crypto from 'crypto';
-
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
+import {
+  TransactionServiceError,
+  createP2PRequest,
+  updateOrCancelRequest,
+  getTransactionsForPost,
+  respondToP2PRequest,
+  createB2COrder,
+  completePeerTransfer,
+  confirmB2CReceipt,
+  cancelB2COrder,
+  getRequesterTransactions,
+  getOwnerTransactions,
+  getTransactionDetail,
+  adminListTransactions,
+  adminForceStatus,
+  adminGetStatusLogs as getStatusLogsService,
+  devForceComplete,
+} from '@/services/transactionService';
 
-import Transaction from '@/models/Transaction';
-import TransactionStatusLog from '@/models/TransactionStatusLog';
-import Post from '@/models/Post';
-import User from '@/models/User';
-import { awardTransactionPoints } from '@/services/greenPointService';
-import { checkAndAwardBadges } from '@/services/badgeService';
-import { createNotification } from '@/services/notificationService';
-import logger from '@/utils/logger';
+const VALID_ADMIN_STATUSES = [
+  'PENDING',
+  'ACCEPTED',
+  'REJECTED',
+  'COMPLETED',
+  'CANCELLED',
+];
 
 // --- TRX_F01: TẠO YÊU CẦU XIN ĐỒ (P2P) ---
 export const createRequest = async (
@@ -18,65 +32,27 @@ export const createRequest = async (
   res: Response
 ): Promise<void> => {
   try {
-    const requesterId = req.user?.id;
+    const requesterId = req.user?.id as string;
     const { postId, quantity } = req.body;
 
-    const post = await Post.findById(postId);
-    if (!post || post.status !== 'AVAILABLE') {
-      res.status(404).json({
-        success: false,
-        message: 'Bài đăng không tồn tại hoặc đã hết hạn/hết hàng',
-      });
-      return;
-    }
-
-    if (post.ownerId.toString() === requesterId) {
-      res.status(400).json({
-        success: false,
-        message: 'Bạn không thể tự xin đồ của chính mình',
-      });
-      return;
-    }
-
-    const existingRequest = await Transaction.findOne({
-      postId,
+    const transaction = await createP2PRequest({
       requesterId,
-      type: 'REQUEST',
-      status: { $in: ['PENDING', 'ACCEPTED'] },
-    });
-    if (existingRequest) {
-      res.status(400).json({
-        success: false,
-        message:
-          'Bạn đã có yêu cầu đang chờ hoặc đã được chấp nhận cho bài đăng này. Vui lòng đợi kết quả hoặc hủy yêu cầu cũ trước khi gửi lại.',
-      });
-      return;
-    }
-
-    if (quantity > post.remainingQuantity) {
-      res.status(400).json({
-        success: false,
-        message: 'Số lượng yêu cầu vượt quá số lượng hiện có',
-      });
-      return;
-    }
-
-    const newTransaction = await Transaction.create({
       postId,
-      requesterId,
-      ownerId: post.ownerId,
-      type: 'REQUEST',
       quantity,
-      status: 'PENDING',
-      paymentMethod: 'FREE',
     });
 
     res.status(201).json({
       success: true,
       message: 'Tạo yêu cầu xin đồ thành công',
-      data: newTransaction,
+      data: transaction,
     });
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -91,57 +67,29 @@ export const updateOrDeleteRequest = async (
   res: Response
 ): Promise<void> => {
   try {
-    const transactionId = req.params.id;
-    const requesterId = req.user?.id;
+    const transactionId = String(req.params.id);
+    const requesterId = req.user?.id as string;
     const { action, quantity } = req.body;
 
-    const transaction = await Transaction.findOne({
-      _id: transactionId,
+    const result = await updateOrCancelRequest({
+      transactionId,
       requesterId,
-      status: 'PENDING',
+      action,
+      quantity,
     });
 
-    if (!transaction) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy yêu cầu hoặc yêu cầu đã được xử lý',
-      });
-      return;
-    }
-
-    if (action === 'DELETE') {
-      if (transaction.type === 'ORDER') {
-        const post = await Post.findById(transaction.postId);
-        if (post) {
-          post.remainingQuantity += transaction.quantity;
-          if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
-          await post.save();
-        }
-        transaction.status = 'CANCELLED';
-        await transaction.save();
-        res.status(200).json({ success: true, message: 'Đã hủy đơn hàng' });
-      } else {
-        await transaction.deleteOne();
-        res
-          .status(200)
-          .json({ success: true, message: 'Đã hủy yêu cầu xin đồ' });
-      }
-      return;
-    }
-
-    if (action === 'UPDATE' && quantity) {
-      transaction.quantity = quantity;
-      await transaction.save();
-      res.status(200).json({
-        success: true,
-        message: 'Cập nhật yêu cầu thành công',
-        data: transaction,
-      });
-      return;
-    }
-
-    res.status(400).json({ success: false, message: 'Hành động không hợp lệ' });
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      ...(result.data ? { data: result.data } : {}),
+    });
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -150,34 +98,24 @@ export const updateOrDeleteRequest = async (
   }
 };
 
-// --- TRX_F04: XEM DANH SÁCH GIAO DỊCH CỦA 1 BÀI ĐĂNG (P2P/B2C) ---
+// --- TRX_F04: XEM DANH SÁCH GIAO DỊCH CỦA 1 BÀI ĐĂNG ---
 export const getPostTransactions = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const { postId } = req.params;
-    const ownerId = req.user?.id;
+    const postId = String(req.params.postId);
+    const ownerId = req.user?.id as string;
 
-    const post = await Post.findOne({ _id: postId, ownerId });
-    if (!post) {
-      res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền xem danh sách này',
-      });
-      return;
-    }
-
-    // P2P: PENDING chờ duyệt; B2C: ACCEPTED (đã nhận, chờ gặp mặt)
-    const statusFilter =
-      post.type === 'P2P_FREE' ? { status: 'PENDING' } : { status: 'ACCEPTED' };
-
-    const transactions = await Transaction.find({ postId, ...statusFilter })
-      .populate('requesterId', 'fullName avatar averageRating')
-      .sort({ createdAt: -1 });
-
+    const transactions = await getTransactionsForPost({ postId, ownerId });
     res.status(200).json({ success: true, data: transactions });
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -186,145 +124,34 @@ export const getPostTransactions = async (
   }
 };
 
-// --- TRX_F05, TRX_F06, TRX_F11: XÁC NHẬN/TỪ CHỐI YÊU CẦU (P2P & B2C) ---
+// --- TRX_F05, TRX_F06, TRX_F11: XÁC NHẬN/TỪ CHỐI YÊU CẦU ---
 export const respondToRequest = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const transactionId = req.params.id;
-    const ownerId = req.user?.id;
+    const transactionId = String(req.params.id);
+    const ownerId = req.user?.id as string;
     const { response } = req.body;
 
-    const transaction = await Transaction.findOne({
-      _id: transactionId,
+    const result = await respondToP2PRequest({
+      transactionId,
       ownerId,
-      status: 'PENDING',
+      response,
     });
-    if (!transaction) {
-      res.status(404).json({
-        success: false,
-        message: 'Yêu cầu không tồn tại hoặc đã được xử lý',
-      });
-      return;
-    }
 
-    if (response === 'REJECT') {
-      if (transaction.type === 'ORDER') {
-        const post = await Post.findById(transaction.postId);
-        if (post) {
-          post.remainingQuantity += transaction.quantity;
-          if (post.status === 'OUT_OF_STOCK' && post.remainingQuantity > 0) {
-            post.status = 'AVAILABLE';
-          }
-          await post.save();
-        }
-      }
-
-      transaction.status = 'REJECTED';
-      await transaction.save();
-      await createNotification(
-        transaction.requesterId.toString(),
-        'TRANSACTION',
-        'Yêu cầu bị từ chối',
-        'Yêu cầu xin đồ của bạn đã bị từ chối bởi người đăng.',
-        transaction._id.toString()
-      );
-      res.status(200).json({ success: true, message: 'Đã từ chối yêu cầu' });
-      return;
-    }
-
-    if (response === 'ACCEPT') {
-      const post = await Post.findById(transaction.postId);
-
-      // For P2P (REQUEST), we check if there is enough quantity.
-      // For B2C (ORDER), quantity was already reserved/deducted during createOrder.
-      if (transaction.type === 'REQUEST') {
-        if (!post || post.remainingQuantity < transaction.quantity) {
-          res.status(400).json({
-            success: false,
-            message: 'Số lượng đồ không đủ để duyệt yêu cầu này',
-          });
-          return;
-        }
-      }
-
-      transaction.status = 'ACCEPTED';
-
-      if (transaction.type === 'REQUEST') {
-        // P2P: sinh verificationCode để buyer quét khi nhận đồ
-        const rawQrString = `${transaction._id}-${transaction.requesterId}-${crypto.randomBytes(4).toString('hex')}`;
-        transaction.verificationCode = rawQrString;
-        await transaction.save();
-
-        if (post) {
-          post.remainingQuantity -= transaction.quantity;
-          if (post.remainingQuantity === 0) {
-            post.status = 'OUT_OF_STOCK';
-          }
-          await post.save();
-        }
-
-        await createNotification(
-          transaction.requesterId.toString(),
-          'TRANSACTION',
-          'Yêu cầu được chấp nhận!',
-          'Yêu cầu xin đồ của bạn đã được chấp nhận. Hãy đến nhận đồ và quét mã QR.',
-          transaction._id.toString()
-        );
-
-        res.status(200).json({
-          success: true,
-          message: 'Đã chấp nhận yêu cầu xin đồ',
-          data: { verificationCode: rawQrString },
-        });
-      } else {
-        // B2C ORDER: sinh transfer code + lưu bank snapshot của store
-        const store = await User.findById(ownerId);
-        if (
-          !store?.paymentInfo?.bankAccountNumber ||
-          !store?.paymentInfo?.bankAccountName
-        ) {
-          res.status(400).json({
-            success: false,
-            message:
-              'Cửa hàng chưa cài đặt thông tin thanh toán. Vui lòng cập nhật trước khi nhận đơn.',
-          });
-          return;
-        }
-
-        const orderRef = (transaction._id as mongoose.Types.ObjectId)
-          .toString()
-          .slice(-8)
-          .toUpperCase();
-        transaction.verificationCode = `FS${orderRef}`;
-        transaction.bankSnapshot = {
-          bankName: store.paymentInfo.bankName,
-          bankAccountNumber: store.paymentInfo.bankAccountNumber,
-          bankAccountName: store.paymentInfo.bankAccountName,
-        };
-
-        await transaction.save();
-
-        await createNotification(
-          transaction.requesterId.toString(),
-          'TRANSACTION',
-          'Đơn hàng được chấp nhận!',
-          'Cửa hàng đã chấp nhận đơn hàng. Hãy đến thanh toán trực tiếp qua chuyển khoản.',
-          transaction._id.toString()
-        );
-
-        res.status(200).json({
-          success: true,
-          message: 'Đã chấp nhận đơn hàng',
-          data: transaction,
-        });
-      }
-      return;
-    }
-
-    res.status(400).json({ success: false, message: 'Phản hồi không hợp lệ' });
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      ...(result.data ? { data: result.data } : {}),
+    });
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -339,52 +166,23 @@ export const createOrder = async (
   res: Response
 ): Promise<void> => {
   try {
-    const requesterId = req.user?.id;
+    const requesterId = req.user?.id as string;
     const { postId, quantity } = req.body;
 
-    const post = await Post.findById(postId);
-    if (
-      !post ||
-      post.status !== 'AVAILABLE' ||
-      post.type !== 'B2C_MYSTERY_BAG'
-    ) {
-      res.status(404).json({
-        success: false,
-        message: 'Túi mù không tồn tại hoặc đã hết hàng',
-      });
-      return;
-    }
-
-    if (quantity > post.remainingQuantity) {
-      res
-        .status(400)
-        .json({ success: false, message: 'Số lượng túi mù không đủ' });
-      return;
-    }
-
-    post.remainingQuantity -= quantity;
-    if (post.remainingQuantity === 0) post.status = 'OUT_OF_STOCK';
-    await post.save();
-
-    const totalAmount = post.price * quantity;
-
-    const newOrder = await Transaction.create({
-      postId,
-      requesterId,
-      ownerId: post.ownerId,
-      type: 'ORDER',
-      quantity,
-      totalAmount,
-      status: 'PENDING',
-      paymentMethod: 'BANK_TRANSFER',
-    });
+    const order = await createB2COrder({ requesterId, postId, quantity });
 
     res.status(201).json({
       success: true,
       message: 'Đặt hàng thành công. Chờ cửa hàng xác nhận.',
-      data: newOrder,
+      data: order,
     });
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -393,98 +191,29 @@ export const createOrder = async (
   }
 };
 
-// --- TRX_F12 & TRX_F13: QUÉT MÃ QR & HOÀN TẤT (CHỈ P2P) ---
+// --- TRX_F12 & TRX_F13: QUÉT MÃ QR & HOÀN TẤT (P2P) ---
 export const scanQrAndComplete = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id as string;
     const { qrCode } = req.body;
 
-    if (!qrCode) {
-      res
-        .status(400)
-        .json({ success: false, message: 'Vui lòng cung cấp mã QR' });
-      return;
-    }
-
-    // Chỉ xử lý P2P REQUEST/ACCEPTED — ORDER dùng confirmReceiptByStore
-    const transaction = await Transaction.findOne({
-      verificationCode: qrCode,
-      requesterId: userId,
-      type: 'REQUEST',
-      status: 'ACCEPTED',
-    });
-
-    if (!transaction) {
-      res.status(404).json({
-        success: false,
-        message:
-          'Mã QR không hợp lệ hoặc đơn hàng không ở trạng thái chờ giao nhận',
-      });
-      return;
-    }
-
-    transaction.status = 'COMPLETED';
-    await transaction.save();
-
-    const post = await Post.findById(transaction.postId);
-    if (post && post.remainingQuantity === 0) {
-      post.status = 'HIDDEN';
-      await post.save();
-    }
-
-    await awardTransactionPoints(
-      (transaction._id as mongoose.Types.ObjectId).toString(),
-      transaction.type as 'REQUEST' | 'ORDER',
-      transaction.requesterId.toString(),
-      transaction.ownerId.toString()
-    );
-
-    await Promise.all([
-      createNotification(
-        transaction.requesterId.toString(),
-        'TRANSACTION',
-        'Giao dịch hoàn tất!',
-        'Giao dịch của bạn đã hoàn tất thành công. Cảm ơn bạn đã sử dụng FoodShare!',
-        transaction._id.toString()
-      ),
-      createNotification(
-        transaction.ownerId.toString(),
-        'TRANSACTION',
-        'Giao dịch hoàn tất!',
-        'Đồ của bạn đã được nhận thành công. Cảm ơn bạn đã chia sẻ!',
-        transaction._id.toString()
-      ),
-    ]);
+    const transaction = await completePeerTransfer({ userId, qrCode });
 
     res.status(200).json({
       success: true,
       message: 'Xác nhận giao nhận thành công!',
       data: transaction,
     });
-
-    try {
-      await checkAndAwardBadges(
-        transaction.requesterId.toString(),
-        'TRANSACTION_COMPLETED'
-      );
-    } catch (err) {
-      console.warn(
-        '[TransactionController] badge check (requester) failed:',
-        err
-      );
-    }
-    try {
-      await checkAndAwardBadges(
-        transaction.ownerId.toString(),
-        'TRANSACTION_COMPLETED'
-      );
-    } catch (err) {
-      console.warn('[TransactionController] badge check (owner) failed:', err);
-    }
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -493,90 +222,29 @@ export const scanQrAndComplete = async (
   }
 };
 
-// --- B2C: STORE XÁC NHẬN ĐÃ NHẬN TIỀN → COMPLETED ---
+// --- B2C: STORE XÁC NHẬN ĐÃ NHẬN TIỀN ---
 export const confirmReceiptByStore = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const transactionId = req.params.id;
-    const ownerId = req.user?.id;
+    const transactionId = String(req.params.id);
+    const ownerId = req.user?.id as string;
 
-    const transaction = await Transaction.findOne({
-      _id: transactionId,
-      ownerId,
-      type: 'ORDER',
-      status: 'ACCEPTED',
-    });
-
-    if (!transaction) {
-      res.status(404).json({
-        success: false,
-        message:
-          'Không tìm thấy đơn hàng hoặc đơn không ở trạng thái chờ xác nhận',
-      });
-      return;
-    }
-
-    transaction.status = 'COMPLETED';
-    await transaction.save();
-
-    const post = await Post.findById(transaction.postId);
-    if (post && post.remainingQuantity === 0) {
-      post.status = 'HIDDEN';
-      await post.save();
-    }
-
-    await awardTransactionPoints(
-      (transaction._id as mongoose.Types.ObjectId).toString(),
-      'ORDER',
-      transaction.requesterId.toString(),
-      transaction.ownerId.toString()
-    );
-
-    await Promise.all([
-      createNotification(
-        transaction.requesterId.toString(),
-        'TRANSACTION',
-        'Giao dịch hoàn tất!',
-        'Cửa hàng đã xác nhận nhận tiền. Cảm ơn bạn đã ủng hộ!',
-        transaction._id.toString()
-      ),
-      createNotification(
-        transaction.ownerId.toString(),
-        'TRANSACTION',
-        'Đã nhận tiền!',
-        'Bạn đã xác nhận nhận tiền thành công. Cảm ơn!',
-        transaction._id.toString()
-      ),
-    ]);
+    const transaction = await confirmB2CReceipt({ transactionId, ownerId });
 
     res.status(200).json({
       success: true,
       message: 'Đã xác nhận nhận tiền thành công',
       data: transaction,
     });
-
-    try {
-      await checkAndAwardBadges(
-        transaction.requesterId.toString(),
-        'TRANSACTION_COMPLETED'
-      );
-    } catch (err) {
-      console.warn(
-        '[TransactionController] badge check (requester) failed:',
-        err
-      );
-    }
-    try {
-      await checkAndAwardBadges(
-        transaction.ownerId.toString(),
-        'TRANSACTION_COMPLETED'
-      );
-    } catch (err) {
-      console.warn('[TransactionController] badge check (owner) failed:', err);
-    }
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -591,16 +259,8 @@ export const getMyTransactions = async (
   res: Response
 ): Promise<void> => {
   try {
-    const requesterId = req.user?.id;
-
-    const transactions = await Transaction.find({ requesterId })
-      .populate({
-        path: 'postId',
-        select: 'title images type price',
-        match: { isDeleted: { $in: [true, false, null] } },
-      })
-      .sort({ createdAt: -1 });
-
+    const requesterId = req.user?.id as string;
+    const transactions = await getRequesterTransactions(requesterId);
     res.status(200).json({ success: true, data: transactions });
   } catch (error: unknown) {
     const message =
@@ -611,23 +271,14 @@ export const getMyTransactions = async (
   }
 };
 
-// --- XEM GIAO DỊCH CỦA TÔI (TƯ CÁCH NGƯỜI CHO / STORE) ---
+// --- XEM GIAO DỊCH (TƯ CÁCH NGƯỜI CHO / STORE) ---
 export const getMyTransactionsAsOwner = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const ownerId = req.user?.id;
-
-    const transactions = await Transaction.find({ ownerId })
-      .populate({
-        path: 'postId',
-        select: 'title images type price',
-        match: { isDeleted: { $in: [true, false, null] } },
-      })
-      .populate('requesterId', 'fullName avatar averageRating')
-      .sort({ createdAt: -1 });
-
+    const ownerId = req.user?.id as string;
+    const transactions = await getOwnerTransactions(ownerId);
     res.status(200).json({ success: true, data: transactions });
   } catch (error: unknown) {
     const message =
@@ -638,54 +289,25 @@ export const getMyTransactionsAsOwner = async (
   }
 };
 
-// --- HỦY ĐƠN TÚI MÙ BỞI STORE (B2C ACCEPTED) ---
+// --- HỦY ĐƠN TÚI MÙ BỞI STORE ---
 export const cancelOrderByStore = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const transactionId = req.params.id;
-    const ownerId = req.user?.id;
+    const transactionId = String(req.params.id);
+    const ownerId = req.user?.id as string;
 
-    const transaction = await Transaction.findOne({
-      _id: transactionId,
-      ownerId,
-      type: 'ORDER',
-      status: 'ACCEPTED',
-    });
+    await cancelB2COrder({ transactionId, ownerId });
 
-    if (!transaction) {
-      res.status(404).json({
-        success: false,
-        message:
-          'Không tìm thấy đơn hàng hoặc đơn không ở trạng thái có thể hủy',
-      });
+    res.status(200).json({ success: true, message: 'Đã hủy đơn hàng' });
+  } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
       return;
     }
-
-    transaction.status = 'CANCELLED';
-    await transaction.save();
-
-    const post = await Post.findById(transaction.postId);
-    if (post) {
-      post.remainingQuantity += transaction.quantity;
-      if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
-      await post.save();
-    }
-
-    await createNotification(
-      transaction.requesterId.toString(),
-      'TRANSACTION',
-      'Đơn hàng bị hủy',
-      'Cửa hàng đã hủy đơn hàng của bạn.',
-      transaction._id.toString()
-    );
-
-    res.status(200).json({
-      success: true,
-      message: 'Đã hủy đơn hàng',
-    });
-  } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -700,19 +322,10 @@ export const getTransactionById = async (
   res: Response
 ): Promise<void> => {
   try {
-    const transactionId = req.params.id;
-    const userId = req.user?.id;
+    const transactionId = String(req.params.id);
+    const userId = req.user?.id as string;
 
-    const transaction = await Transaction.findOne({
-      _id: transactionId,
-      $or: [{ requesterId: userId }, { ownerId: userId }],
-    })
-      .populate({
-        path: 'postId',
-        select: 'title images type price',
-        match: { isDeleted: { $in: [true, false, null] } },
-      })
-      .populate('requesterId', 'fullName avatar averageRating');
+    const transaction = await getTransactionDetail({ transactionId, userId });
 
     if (!transaction) {
       res.status(404).json({
@@ -740,37 +353,23 @@ export const adminGetTransactions = async (
   try {
     const { type, status, page = '1', limit = '20' } = req.query;
 
-    const filter: Record<string, string> = {};
-    if (typeof type === 'string' && type) filter.type = type;
-    if (typeof status === 'string' && status) filter.status = status;
-
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(
       100,
       Math.max(1, parseInt(limit as string, 10) || 20)
     );
-    const skip = (pageNum - 1) * limitNum;
 
-    const [transactions, total] = await Promise.all([
-      Transaction.find(filter)
-        .populate('requesterId', 'fullName email avatar')
-        .populate('ownerId', 'fullName email avatar')
-        .populate('postId', 'title type price')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum),
-      Transaction.countDocuments(filter),
-    ]);
+    const result = await adminListTransactions({
+      type: typeof type === 'string' && type ? type : undefined,
+      status: typeof status === 'string' && status ? status : undefined,
+      page: pageNum,
+      limit: limitNum,
+    });
 
     res.status(200).json({
       success: true,
-      data: transactions,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        totalPages: Math.ceil(total / limitNum),
-      },
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error: unknown) {
     const message =
@@ -787,44 +386,22 @@ export const adminForceUpdateStatus = async (
   res: Response
 ): Promise<void> => {
   try {
-    const transactionId = req.params.id;
-    const adminId = req.user?.id;
+    const transactionId = String(req.params.id);
+    const adminId = req.user?.id as string;
     const { status } = req.body;
 
-    const validStatuses = [
-      'PENDING',
-      'ACCEPTED',
-      'REJECTED',
-      'COMPLETED',
-      'CANCELLED',
-    ];
-
-    if (!validStatuses.includes(status)) {
+    if (!VALID_ADMIN_STATUSES.includes(status)) {
       res.status(400).json({
         success: false,
-        message: `Trạng thái không hợp lệ. Giá trị cho phép: ${validStatuses.join(', ')}`,
+        message: `Trạng thái không hợp lệ. Giá trị cho phép: ${VALID_ADMIN_STATUSES.join(', ')}`,
       });
       return;
     }
 
-    const transaction = await Transaction.findById(transactionId);
-    if (!transaction) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy giao dịch',
-      });
-      return;
-    }
-
-    const previousStatus = transaction.status;
-    transaction.status = status;
-    await transaction.save();
-
-    await TransactionStatusLog.create({
-      transactionId: transaction._id,
-      previousStatus,
-      newStatus: status,
-      changedBy: adminId,
+    const transaction = await adminForceStatus({
+      transactionId,
+      status,
+      adminId,
     });
 
     res.status(200).json({
@@ -833,6 +410,12 @@ export const adminForceUpdateStatus = async (
       data: transaction,
     });
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res
@@ -841,7 +424,7 @@ export const adminForceUpdateStatus = async (
   }
 };
 
-// --- ADM_T03: ADMIN XEM LỊCH SỬ CẬP NHẬT TRẠNG THÁI GIAO DỊCH ---
+// --- ADM_T03: ADMIN XEM LỊCH SỬ TRẠNG THÁI ---
 export const adminGetStatusLogs = async (
   req: Request,
   res: Response
@@ -849,37 +432,25 @@ export const adminGetStatusLogs = async (
   try {
     const { transactionId, page = '1', limit = '15' } = req.query;
 
-    const filter: Record<string, unknown> = {};
-    if (typeof transactionId === 'string' && transactionId) {
-      filter.transactionId = transactionId;
-    }
-
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(
       100,
       Math.max(1, parseInt(limit as string, 10) || 15)
     );
-    const skip = (pageNum - 1) * limitNum;
 
-    const [logs, total] = await Promise.all([
-      TransactionStatusLog.find(filter)
-        .populate('transactionId', '_id type status postId')
-        .populate('changedBy', 'fullName email avatar')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum),
-      TransactionStatusLog.countDocuments(filter),
-    ]);
+    const result = await getStatusLogsService({
+      transactionId:
+        typeof transactionId === 'string' && transactionId
+          ? transactionId
+          : undefined,
+      page: pageNum,
+      limit: limitNum,
+    });
 
     res.status(200).json({
       success: true,
-      data: logs,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        totalPages: Math.ceil(total / limitNum),
-      },
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error: unknown) {
     const message =
@@ -904,70 +475,21 @@ export const devCompleteTransaction = async (
       return;
     }
 
-    const transactionId = req.params.id;
-
-    const transaction = await Transaction.findById(transactionId);
-    if (!transaction) {
-      res
-        .status(404)
-        .json({ success: false, message: 'Không tìm thấy giao dịch' });
-      return;
-    }
-
-    if (transaction.status !== 'ACCEPTED') {
-      res.status(400).json({
-        success: false,
-        message: `Giao dịch đang ở trạng thái ${transaction.status}, không thể hoàn tất. Cần ACCEPTED.`,
-      });
-      return;
-    }
-
-    transaction.status = 'COMPLETED';
-    await transaction.save();
-
-    const post = await Post.findById(transaction.postId);
-    if (post && post.remainingQuantity === 0) {
-      post.status = 'HIDDEN';
-      await post.save();
-    }
-
-    await awardTransactionPoints(
-      (transaction._id as mongoose.Types.ObjectId).toString(),
-      transaction.type as 'REQUEST' | 'ORDER',
-      transaction.requesterId.toString(),
-      transaction.ownerId.toString()
-    );
-
-    logger.info('[DEV] Transaction completed without QR scan', {
-      transactionId,
-    });
+    const transactionId = String(req.params.id);
+    const transaction = await devForceComplete(transactionId);
 
     res.status(200).json({
       success: true,
       message: '[DEV] Giao dịch đã hoàn tất thành công (bỏ qua quét QR)',
       data: transaction,
     });
-
-    try {
-      await checkAndAwardBadges(
-        transaction.requesterId.toString(),
-        'TRANSACTION_COMPLETED'
-      );
-    } catch (err) {
-      console.warn(
-        '[TransactionController] badge check (requester) failed:',
-        err
-      );
-    }
-    try {
-      await checkAndAwardBadges(
-        transaction.ownerId.toString(),
-        'TRANSACTION_COMPLETED'
-      );
-    } catch (err) {
-      console.warn('[TransactionController] badge check (owner) failed:', err);
-    }
   } catch (error: unknown) {
+    if (error instanceof TransactionServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
     res

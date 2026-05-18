@@ -569,10 +569,15 @@ export interface CleanupResult {
 }
 
 export async function runCleanup(
-  gracePeriodDays: number
+  gracePeriodDays?: number
 ): Promise<CleanupResult[]> {
+  let days = gracePeriodDays;
+  if (days === undefined) {
+    const config = await SystemConfig.findOne();
+    days = config?.softDelete?.gracePeriodDays ?? 30;
+  }
   const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - gracePeriodDays);
+  cutoffDate.setDate(cutoffDate.getDate() - days);
 
   const expiredFilter = {
     isDeleted: true,

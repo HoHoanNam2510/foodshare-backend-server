@@ -16,7 +16,6 @@ import {
   getTrashItems,
   runCleanup,
 } from '@/services/softDeleteService';
-import SystemConfig from '@/models/SystemConfig';
 
 function handleTrashError(error: unknown, res: Response): void {
   if (error instanceof SoftDeleteError) {
@@ -344,14 +343,11 @@ export const restoreUser = async (
  * Admin kích hoạt dọn dẹp thùng rác ngay lập tức.
  */
 export const cleanupNow = async (
-  req: Request,
+  _req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const config = await SystemConfig.findOne();
-    const gracePeriodDays = config?.softDelete?.gracePeriodDays ?? 30;
-
-    const results = await runCleanup(gracePeriodDays);
+    const results = await runCleanup();
     const totalPurged = results.reduce((sum, r) => sum + r.purgedCount, 0);
 
     res.status(200).json({

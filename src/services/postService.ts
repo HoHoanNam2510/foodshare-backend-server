@@ -1,5 +1,8 @@
 import OpenAI from 'openai';
 import Post, { IPost } from '@/models/Post';
+import PostCreationPasscode from '@/models/PostCreationPasscode';
+import Transaction from '@/models/Transaction';
+import User from '@/models/User';
 import { createNotification } from '@/services/notificationService';
 import SystemConfig from '@/models/SystemConfig';
 import AIPostModerationLog, {
@@ -359,4 +362,239 @@ export async function getHomePostsFeed(
 
     return { ...post, distanceLabel };
   });
+}
+
+// =============================================
+// PASSCODE — Post creation OTP
+// =============================================
+
+const POST_PASSCODE_LENGTH = 6;
+const POST_PASSCODE_EXPIRE_MINUTES = 10;
+const MAX_PASSCODE_SEND_PER_MINUTE = 3;
+
+export class PostServiceError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+    public readonly errorCode?: string
+  ) {
+    super(message);
+    this.name = 'PostServiceError';
+  }
+}
+
+function generateNumericPasscode(length: number): string {
+  let passcode = '';
+  for (let i = 0; i < length; i += 1) {
+    passcode += Math.floor(Math.random() * 10).toString();
+  }
+  return passcode;
+}
+
+export interface PostCreationEligibility {
+  email: string;
+  isEmailVerified: boolean;
+  authProvider: string;
+  role: string;
+  kycStatus?: string;
+}
+
+export async function getUserPostEligibility(userId: string): Promise<PostCreationEligibility | null> {
+  const user = await User.findById(userId).select('email authProvider isEmailVerified role kycStatus');
+  if (!user) return null;
+  return {
+    email: user.email,
+    isEmailVerified: user.isEmailVerified,
+    authProvider: user.authProvider,
+    role: user.role,
+    kycStatus: user.kycStatus,
+  };
+}
+
+export async function checkPasscodeRateLimit(userId: string): Promise<void> {
+  const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+  const recentCount = await PostCreationPasscode.countDocuments({
+    userId,
+    createdAt: { $gte: oneMinuteAgo },
+  });
+  if (recentCount >= MAX_PASSCODE_SEND_PER_MINUTE) {
+    throw new PostServiceError(
+      'Bạn đã gửi passcode quá nhiều lần. Vui lòng thử lại sau khoảng 1 phút',
+      429
+    );
+  }
+}
+
+export async function createPostPasscode(
+  userId: string
+): Promise<{ passcode: string; expiresAt: Date }> {
+  const passcode = generateNumericPasscode(POST_PASSCODE_LENGTH);
+  const expiresAt = new Date(Date.now() + POST_PASSCODE_EXPIRE_MINUTES * 60 * 1000);
+
+  await PostCreationPasscode.updateMany(
+    { userId, usedAt: null },
+    { $set: { usedAt: new Date() } }
+  );
+
+  await PostCreationPasscode.create({ userId, code: passcode, expiresAt });
+
+  return { passcode, expiresAt };
+}
+
+export async function validatePostPasscode(
+  userId: string,
+  code: string
+): Promise<{ valid: boolean; passcodeId?: string }> {
+  if (typeof code !== 'string' || !new RegExp(`^\\d{${POST_PASSCODE_LENGTH}}$`).test(code)) {
+    return { valid: false };
+  }
+
+  const now = new Date();
+  const record = await PostCreationPasscode.findOne({
+    userId,
+    code,
+    usedAt: null,
+    expiresAt: { $gt: now },
+  }).sort({ createdAt: -1 });
+
+  if (!record) return { valid: false };
+  return { valid: true, passcodeId: String(record._id) };
+}
+
+export async function markPasscodeUsed(passcodeId: string): Promise<void> {
+  await PostCreationPasscode.findByIdAndUpdate(passcodeId, { usedAt: new Date() });
+}
+
+export const POST_PASSCODE_EXPIRE_MINUTES_EXPORT = POST_PASSCODE_EXPIRE_MINUTES;
+
+// =============================================
+// POST CRUD SERVICE FUNCTIONS
+// =============================================
+
+export async function getPostsByOwner(ownerId: string): Promise<IPost[]> {
+  return Post.find({ ownerId }).sort({ createdAt: -1 });
+}
+
+export async function getPostById(
+  postId: string,
+  currentUserId?: string
+): Promise<IPost | null> {
+  const post = await Post.findById(postId).populate(
+    'ownerId',
+    'fullName avatar averageRating role'
+  );
+
+  if (!post) return null;
+
+  const restrictedStatuses = ['HIDDEN', 'REJECTED', 'PENDING_REVIEW'];
+  const isOwner =
+    currentUserId && String((post.ownerId as { _id?: unknown })._id || post.ownerId) === currentUserId;
+
+  if (restrictedStatuses.includes(post.status) && !isOwner) return null;
+
+  return post;
+}
+
+export async function getAvailablePosts(
+  filter: Record<string, unknown>,
+  sortOption: Record<string, 1 | -1>
+): Promise<IPost[]> {
+  return Post.find(filter)
+    .populate('ownerId', 'fullName avatar averageRating')
+    .sort(sortOption)
+    .limit(100);
+}
+
+export async function searchPostsNear(
+  filter: Record<string, unknown>,
+  sortOption: Record<string, 1 | -1>
+): Promise<IPost[]> {
+  return Post.find(filter)
+    .populate('ownerId', 'fullName avatar averageRating role')
+    .sort(sortOption);
+}
+
+export async function checkActiveTransactions(
+  postId: string,
+  fields: string[]
+): Promise<boolean> {
+  const hasQuantityOrPriceChange = fields.some((f) =>
+    ['totalQuantity', 'remainingQuantity', 'price'].includes(f)
+  );
+  if (!hasQuantityOrPriceChange) return false;
+
+  const count = await Transaction.countDocuments({
+    postId: postId,
+    status: { $in: ['PENDING', 'ACCEPTED', 'ESCROWED', 'DISPUTED'] },
+  });
+  return count > 0;
+}
+
+export async function getUserBankAccount(
+  userId: string
+): Promise<string | undefined> {
+  const owner = await User.findById(userId).select('paymentInfo role');
+  return owner?.paymentInfo?.bankAccountNumber;
+}
+
+export async function createPostRecord(
+  postData: Record<string, unknown>
+): Promise<IPost> {
+  return Post.create(postData);
+}
+
+export async function updatePostRecord(
+  postId: string,
+  updates: Record<string, unknown>
+): Promise<IPost | null> {
+  return Post.findByIdAndUpdate(postId, { $set: updates }, { new: true, runValidators: true });
+}
+
+export async function getPostForOwner(
+  postId: string,
+  ownerId: string
+): Promise<IPost | null> {
+  return Post.findOne({ _id: postId, ownerId });
+}
+
+export async function adminUpdatePostRecord(
+  postId: string,
+  updates: Record<string, unknown>
+): Promise<IPost | null> {
+  return Post.findByIdAndUpdate(postId, { $set: updates }, { new: true, runValidators: true });
+}
+
+export type ToggleHideResult =
+  | { ok: true; newStatus: 'AVAILABLE' | 'HIDDEN'; post: IPost }
+  | { ok: false; statusCode: number; message: string; errorCode?: string };
+
+export async function adminToggleHidePost(postId: string): Promise<ToggleHideResult> {
+  const post = await Post.findById(postId);
+  if (!post) return { ok: false, statusCode: 404, message: 'Không tìm thấy bài đăng' };
+
+  if (post.status === 'HIDDEN') {
+    if (post.expiryDate && post.expiryDate < new Date()) {
+      return { ok: false, statusCode: 400, message: 'Không thể hiển thị bài đăng đã hết hạn sử dụng', errorCode: 'POST_EXPIRED' };
+    }
+    if (post.remainingQuantity <= 0) {
+      return { ok: false, statusCode: 400, message: 'Không thể hiển thị bài đăng đã hết hàng. Hãy cập nhật số lượng trước.', errorCode: 'POST_OUT_OF_STOCK' };
+    }
+    post.status = 'AVAILABLE';
+    await post.save();
+    return { ok: true, newStatus: 'AVAILABLE', post };
+  }
+
+  const hideableStatuses = ['AVAILABLE', 'PENDING_REVIEW'];
+  if (!hideableStatuses.includes(post.status)) {
+    return {
+      ok: false,
+      statusCode: 400,
+      message: `Không thể ẩn bài đăng ở trạng thái "${post.status}". Chỉ ẩn được bài đang hiển thị hoặc chờ duyệt.`,
+      errorCode: 'INVALID_POST_STATUS',
+    };
+  }
+
+  post.status = 'HIDDEN';
+  await post.save();
+  return { ok: true, newStatus: 'HIDDEN', post };
 }
