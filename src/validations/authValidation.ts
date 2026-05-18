@@ -96,3 +96,8 @@ export const kycResubmitSchema = z.object({
     .min(1, 'Cần ít nhất 1 ảnh KYC')
     .max(5, 'Tối đa 5 ảnh KYC'),
 });
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Mật khẩu hiện tại là bắt buộc'),
+  newPassword: z.string().min(6, 'Mật khẩu mới tối thiểu 6 ký tự'),
+});

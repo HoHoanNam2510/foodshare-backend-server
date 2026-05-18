@@ -7,6 +7,7 @@ import {
   googleLogin,
   completeProfile,
   setPassword,
+  changePassword,
   logout,
   getMe,
   updateProfile,
@@ -37,6 +38,7 @@ import {
   googleLoginSchema,
   completeProfileSchema,
   setPasswordSchema,
+  changePasswordSchema,
   verifyEmailSchema,
   updateProfileSchema,
   updateLocationSchema,
@@ -87,6 +89,14 @@ router.put(
   verifyAuth,
   validateBody(setPasswordSchema),
   setPassword
+);
+
+// [PUT] /api/auth/change-password
+router.put(
+  '/change-password',
+  verifyAuth,
+  validateBody(changePasswordSchema),
+  changePassword
 );
 
 // [POST] /api/auth/email-verification/send

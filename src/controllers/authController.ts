@@ -1014,6 +1014,77 @@ export const deleteMyAccount = async (
   }
 };
 
+// --- API ĐỔI MẬT KHẨU (Dành cho tài khoản LOCAL đã có password) ---
+export const changePassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const user = await User.findById(userId).select('+password');
+
+    if (!user) {
+      res
+        .status(404)
+        .json({ success: false, message: 'Không tìm thấy người dùng' });
+      return;
+    }
+
+    if (!user.password) {
+      res.status(400).json({
+        success: false,
+        message:
+          'Tài khoản này chưa có mật khẩu. Vui lòng dùng endpoint set-password',
+      });
+      return;
+    }
+
+    const isMatch = await comparePassword(currentPassword, user.password);
+    if (!isMatch) {
+      res.status(401).json({
+        success: false,
+        message: 'Mật khẩu hiện tại không chính xác',
+        errorCode: 'WRONG_CURRENT_PASSWORD',
+      });
+      return;
+    }
+
+    const isSamePassword = await comparePassword(newPassword, user.password);
+    if (isSamePassword) {
+      res.status(400).json({
+        success: false,
+        message: 'Mật khẩu mới không được trùng với mật khẩu hiện tại',
+        errorCode: 'SAME_PASSWORD',
+      });
+      return;
+    }
+
+    user.password = await hashPassword(newPassword);
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Đổi mật khẩu thành công',
+    });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Đổi mật khẩu thất bại';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
 // --- HOME: Impact stats của user hiện tại ---
 // GET /api/auth/me/impact
 export const getMyImpact = async (
