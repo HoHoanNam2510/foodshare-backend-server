@@ -13,6 +13,7 @@ import {
   cancelOrderByStore,
   adminGetTransactions,
   adminForceUpdateStatus,
+  adminGetStatusLogs,
   devCompleteTransaction,
 } from '@/controllers/transactionController';
 import { verifyAuth, verifyAdmin } from '@/middlewares/authMiddleware';
@@ -69,6 +70,14 @@ router.patch(
   verifyAuth,
   verifyAdmin,
   adminForceUpdateStatus
+);
+
+// [GET] /api/transactions/admin/status-logs
+router.get(
+  '/admin/status-logs',
+  verifyAuth,
+  verifyAdmin,
+  adminGetStatusLogs
 );
 
 // ===== DEV ONLY =====

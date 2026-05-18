@@ -4,6 +4,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 
 import Transaction from '@/models/Transaction';
+import TransactionStatusLog from '@/models/TransactionStatusLog';
 import Post from '@/models/Post';
 import User from '@/models/User';
 import { awardTransactionPoints } from '@/services/greenPointService';
@@ -787,6 +788,7 @@ export const adminForceUpdateStatus = async (
 ): Promise<void> => {
   try {
     const transactionId = req.params.id;
+    const adminId = req.user?.id;
     const { status } = req.body;
 
     const validStatuses = [
@@ -814,13 +816,70 @@ export const adminForceUpdateStatus = async (
       return;
     }
 
+    const previousStatus = transaction.status;
     transaction.status = status;
     await transaction.save();
+
+    await TransactionStatusLog.create({
+      transactionId: transaction._id,
+      previousStatus,
+      newStatus: status,
+      changedBy: adminId,
+    });
 
     res.status(200).json({
       success: true,
       message: `Đã ép đổi trạng thái giao dịch thành ${status}`,
       data: transaction,
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+// --- ADM_T03: ADMIN XEM LỊCH SỬ CẬP NHẬT TRẠNG THÁI GIAO DỊCH ---
+export const adminGetStatusLogs = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { transactionId, page = '1', limit = '15' } = req.query;
+
+    const filter: Record<string, unknown> = {};
+    if (typeof transactionId === 'string' && transactionId) {
+      filter.transactionId = transactionId;
+    }
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(
+      100,
+      Math.max(1, parseInt(limit as string, 10) || 15)
+    );
+    const skip = (pageNum - 1) * limitNum;
+
+    const [logs, total] = await Promise.all([
+      TransactionStatusLog.find(filter)
+        .populate('transactionId', '_id type status postId')
+        .populate('changedBy', 'fullName email avatar')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      TransactionStatusLog.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: logs,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
     });
   } catch (error: unknown) {
     const message =
