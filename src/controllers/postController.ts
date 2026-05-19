@@ -124,7 +124,6 @@ export const createPost = async (
   res: Response
 ): Promise<void> => {
   const ownerId = req.user?.id;
-  let newPostId: string | null = null;
 
   try {
     const {
@@ -204,7 +203,7 @@ export const createPost = async (
     if (location) postData.location = location;
 
     const newPost = await createPostRecord(postData);
-    newPostId = String(newPost._id);
+    const newPostId = String(newPost._id);
 
     await markPasscodeUsed(passcodeId);
 
@@ -212,6 +211,20 @@ export const createPost = async (
       success: true,
       message: 'Tạo bài đăng thành công',
       data: newPost,
+    });
+
+    if (ownerId) {
+      checkAndAwardBadges(ownerId, 'POST_CREATED').catch((err: unknown) => {
+        logger.warn('[createPost] badge check (POST_CREATED) failed', {
+          error: err,
+        });
+      });
+    }
+
+    runAIModerationJob(newPostId, 'ON_CREATE').catch((err: unknown) => {
+      logger.error('[createPost] Background AI moderation failed', {
+        error: err,
+      });
     });
   } catch (error: unknown) {
     logger.error('[createPost] Error creating post', {
@@ -241,22 +254,6 @@ export const createPost = async (
       ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
     });
     return;
-  }
-
-  if (ownerId) {
-    checkAndAwardBadges(ownerId, 'POST_CREATED').catch((err: unknown) => {
-      logger.warn('[createPost] badge check (POST_CREATED) failed', {
-        error: err,
-      });
-    });
-  }
-
-  if (newPostId) {
-    runAIModerationJob(newPostId, 'ON_CREATE').catch((err: unknown) => {
-      logger.error('[createPost] Background AI moderation failed', {
-        error: err,
-      });
-    });
   }
 };
 

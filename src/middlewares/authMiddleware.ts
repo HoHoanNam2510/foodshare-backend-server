@@ -10,6 +10,7 @@ export interface AuthPayload {
 
 // Mở rộng interface Request của Express để TypeScript không báo lỗi khi ta gán thêm req.user
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: AuthPayload;
@@ -47,7 +48,7 @@ export const verifyAuth = (
 
     // Cấp phép cho request đi tiếp vào Controller
     next();
-  } catch (error) {
+  } catch {
     res.status(403).json({
       success: false,
       message: 'Token không hợp lệ hoặc đã hết hạn',

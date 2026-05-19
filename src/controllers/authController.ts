@@ -47,13 +47,11 @@ export const registerSendCode = async (
       return;
     }
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server khi gửi mã xác minh',
-        error: errorMessage,
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi gửi mã xác minh',
+      error: errorMessage,
+    });
   }
 };
 
@@ -67,17 +65,15 @@ export const verifyCodeOnly = async (
     const valid = await verifyRegistrationCode(email, code);
 
     if (!valid) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          message: 'Mã xác minh không hợp lệ hoặc đã hết hạn',
-        });
+      res.status(400).json({
+        success: false,
+        message: 'Mã xác minh không hợp lệ hoặc đã hết hạn',
+      });
       return;
     }
 
     res.status(200).json({ success: true, message: 'Mã xác minh hợp lệ' });
-  } catch (error: unknown) {
+  } catch {
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 };
@@ -164,13 +160,11 @@ export const googleLogin = async (
     }
     const errorMessage =
       error instanceof Error ? error.message : 'Đăng nhập Google thất bại';
-    res
-      .status(400)
-      .json({
-        success: false,
-        message: 'Đăng nhập Google thất bại',
-        error: errorMessage,
-      });
+    res.status(400).json({
+      success: false,
+      message: 'Đăng nhập Google thất bại',
+      error: errorMessage,
+    });
   }
 };
 
@@ -183,12 +177,10 @@ export const completeProfile = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
@@ -239,25 +231,21 @@ export const setPassword = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
     const { newPassword } = req.body;
     const user = await setGooglePassword({ userId, newPassword });
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: 'Thiết lập mật khẩu thành công',
-        data: user,
-      });
+    res.status(200).json({
+      success: true,
+      message: 'Thiết lập mật khẩu thành công',
+      data: user,
+    });
   } catch (error: unknown) {
     if (error instanceof AuthServiceError) {
       res
@@ -279,12 +267,10 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
@@ -297,13 +283,11 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: 'Lấy thông tin người dùng thành công',
-        data: user,
-      });
+    res.status(200).json({
+      success: true,
+      message: 'Lấy thông tin người dùng thành công',
+      data: user,
+    });
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : 'Lấy thông tin thất bại';
@@ -322,12 +306,10 @@ export const updateProfile = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
@@ -351,13 +333,11 @@ export const updateProfile = async (
       },
     });
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: 'Cập nhật hồ sơ thành công',
-        data: user,
-      });
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật hồ sơ thành công',
+      data: user,
+    });
 
     const isCompleted = Boolean(
       (user as Record<string, unknown>).isProfileCompleted
@@ -394,25 +374,21 @@ export const updateMyLocation = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
     const { longitude, latitude } = req.body;
     const user = await updateUserLocation({ userId, longitude, latitude });
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: 'Cập nhật vị trí thành công',
-        data: user,
-      });
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật vị trí thành công',
+      data: user,
+    });
   } catch (error: unknown) {
     if (error instanceof AuthServiceError) {
       res
@@ -437,12 +413,10 @@ export const registerStore = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
@@ -484,12 +458,10 @@ export const resubmitKyc = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
@@ -559,12 +531,10 @@ export const changePassword = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 
@@ -598,12 +568,10 @@ export const getMyImpact = async (
     const userId = req.user?.id;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Bạn cần đăng nhập để thực hiện thao tác này',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
       return;
     }
 

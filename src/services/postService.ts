@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import logger from '@/utils/logger';
 import Post, { IPost } from '@/models/Post';
 import PostCreationPasscode from '@/models/PostCreationPasscode';
 import Transaction from '@/models/Transaction';
@@ -30,7 +31,7 @@ const groqClient = process.env.GROQ_API_KEY
 if (!groqClient) {
   console.warn('[AI Moderation] GROQ_API_KEY not set — AI moderation disabled');
 } else {
-  console.info('[AI Moderation] Groq client initialized');
+  logger.info('[AI Moderation] Groq client initialized');
 }
 
 type ModerationResult = {
@@ -399,8 +400,12 @@ export interface PostCreationEligibility {
   kycStatus?: string;
 }
 
-export async function getUserPostEligibility(userId: string): Promise<PostCreationEligibility | null> {
-  const user = await User.findById(userId).select('email authProvider isEmailVerified role kycStatus');
+export async function getUserPostEligibility(
+  userId: string
+): Promise<PostCreationEligibility | null> {
+  const user = await User.findById(userId).select(
+    'email authProvider isEmailVerified role kycStatus'
+  );
   if (!user) return null;
   return {
     email: user.email,
@@ -429,7 +434,9 @@ export async function createPostPasscode(
   userId: string
 ): Promise<{ passcode: string; expiresAt: Date }> {
   const passcode = generateNumericPasscode(POST_PASSCODE_LENGTH);
-  const expiresAt = new Date(Date.now() + POST_PASSCODE_EXPIRE_MINUTES * 60 * 1000);
+  const expiresAt = new Date(
+    Date.now() + POST_PASSCODE_EXPIRE_MINUTES * 60 * 1000
+  );
 
   await PostCreationPasscode.updateMany(
     { userId, usedAt: null },
@@ -445,7 +452,10 @@ export async function validatePostPasscode(
   userId: string,
   code: string
 ): Promise<{ valid: boolean; passcodeId?: string }> {
-  if (typeof code !== 'string' || !new RegExp(`^\\d{${POST_PASSCODE_LENGTH}}$`).test(code)) {
+  if (
+    typeof code !== 'string' ||
+    !new RegExp(`^\\d{${POST_PASSCODE_LENGTH}}$`).test(code)
+  ) {
     return { valid: false };
   }
 
@@ -462,7 +472,9 @@ export async function validatePostPasscode(
 }
 
 export async function markPasscodeUsed(passcodeId: string): Promise<void> {
-  await PostCreationPasscode.findByIdAndUpdate(passcodeId, { usedAt: new Date() });
+  await PostCreationPasscode.findByIdAndUpdate(passcodeId, {
+    usedAt: new Date(),
+  });
 }
 
 export const POST_PASSCODE_EXPIRE_MINUTES_EXPORT = POST_PASSCODE_EXPIRE_MINUTES;
@@ -488,7 +500,9 @@ export async function getPostById(
 
   const restrictedStatuses = ['HIDDEN', 'REJECTED', 'PENDING_REVIEW'];
   const isOwner =
-    currentUserId && String((post.ownerId as { _id?: unknown })._id || post.ownerId) === currentUserId;
+    currentUserId &&
+    String((post.ownerId as { _id?: unknown })._id || post.ownerId) ===
+      currentUserId;
 
   if (restrictedStatuses.includes(post.status) && !isOwner) return null;
 
@@ -547,7 +561,11 @@ export async function updatePostRecord(
   postId: string,
   updates: Record<string, unknown>
 ): Promise<IPost | null> {
-  return Post.findByIdAndUpdate(postId, { $set: updates }, { new: true, runValidators: true });
+  return Post.findByIdAndUpdate(
+    postId,
+    { $set: updates },
+    { new: true, runValidators: true }
+  );
 }
 
 export async function getPostForOwner(
@@ -561,23 +579,41 @@ export async function adminUpdatePostRecord(
   postId: string,
   updates: Record<string, unknown>
 ): Promise<IPost | null> {
-  return Post.findByIdAndUpdate(postId, { $set: updates }, { new: true, runValidators: true });
+  return Post.findByIdAndUpdate(
+    postId,
+    { $set: updates },
+    { new: true, runValidators: true }
+  );
 }
 
 export type ToggleHideResult =
   | { ok: true; newStatus: 'AVAILABLE' | 'HIDDEN'; post: IPost }
   | { ok: false; statusCode: number; message: string; errorCode?: string };
 
-export async function adminToggleHidePost(postId: string): Promise<ToggleHideResult> {
+export async function adminToggleHidePost(
+  postId: string
+): Promise<ToggleHideResult> {
   const post = await Post.findById(postId);
-  if (!post) return { ok: false, statusCode: 404, message: 'Không tìm thấy bài đăng' };
+  if (!post)
+    return { ok: false, statusCode: 404, message: 'Không tìm thấy bài đăng' };
 
   if (post.status === 'HIDDEN') {
     if (post.expiryDate && post.expiryDate < new Date()) {
-      return { ok: false, statusCode: 400, message: 'Không thể hiển thị bài đăng đã hết hạn sử dụng', errorCode: 'POST_EXPIRED' };
+      return {
+        ok: false,
+        statusCode: 400,
+        message: 'Không thể hiển thị bài đăng đã hết hạn sử dụng',
+        errorCode: 'POST_EXPIRED',
+      };
     }
     if (post.remainingQuantity <= 0) {
-      return { ok: false, statusCode: 400, message: 'Không thể hiển thị bài đăng đã hết hàng. Hãy cập nhật số lượng trước.', errorCode: 'POST_OUT_OF_STOCK' };
+      return {
+        ok: false,
+        statusCode: 400,
+        message:
+          'Không thể hiển thị bài đăng đã hết hàng. Hãy cập nhật số lượng trước.',
+        errorCode: 'POST_OUT_OF_STOCK',
+      };
     }
     post.status = 'AVAILABLE';
     await post.save();

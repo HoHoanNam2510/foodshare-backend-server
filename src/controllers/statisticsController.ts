@@ -5,7 +5,7 @@ import { StatisticsQuery } from '@/validations/statisticsValidation';
 export async function getMyStatisticsController(
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): Promise<void> {
   try {
     const user = req.user;

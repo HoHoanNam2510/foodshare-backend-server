@@ -184,8 +184,6 @@ async function evaluateBadgeCondition(
  * Internal: Trao huy hiệu cho user — tạo UserBadge + cộng điểm + thông báo.
  */
 async function awardBadge(userId: string, badge: IBadge): Promise<void> {
-  const badgeId = (badge._id as mongoose.Types.ObjectId).toString();
-
   // Tạo UserBadge (unique index đảm bảo không duplicate)
   await UserBadge.create({ userId, badgeId: badge._id });
 
