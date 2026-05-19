@@ -7,6 +7,7 @@ import User from '@/models/User';
 import NotificationBroadcast, {
   INotificationBroadcast,
 } from '@/models/NotificationBroadcast';
+import logger from '@/utils/logger';
 
 type NotificationType = 'TRANSACTION' | 'RADAR' | 'SYSTEM' | 'VOUCHER';
 type BroadcastTargetRole = 'ALL' | 'USER' | 'STORE' | 'ADMIN';
@@ -62,12 +63,12 @@ export async function createNotification(
         try {
           await expo.sendPushNotificationsAsync(chunk);
         } catch (pushError) {
-          console.error('[NotificationService] Push send failed:', pushError);
+          logger.error('[NotificationService] Push send failed:', pushError);
         }
       }
     }
   } catch (error) {
-    console.error('[NotificationService] createNotification failed:', error);
+    logger.error('[NotificationService] createNotification failed:', error);
   }
 }
 
@@ -122,7 +123,7 @@ export async function broadcastNotification(
         try {
           await expo.sendPushNotificationsAsync(chunk);
         } catch (pushError) {
-          console.error('[Broadcast] Push send failed:', pushError);
+          logger.error('[Broadcast] Push send failed:', pushError);
         }
       }
     }
@@ -140,7 +141,7 @@ export async function broadcastNotification(
 
     return broadcast;
   } catch (error) {
-    console.error('[NotificationService] broadcastNotification failed:', error);
+    logger.error('[NotificationService] broadcastNotification failed:', error);
     throw error;
   }
 }
@@ -236,7 +237,7 @@ export async function getBroadcastHistory(
       },
     };
   } catch (error) {
-    console.error('[NotificationService] getBroadcastHistory failed:', error);
+    logger.error('[NotificationService] getBroadcastHistory failed:', error);
     throw error;
   }
 }

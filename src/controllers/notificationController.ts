@@ -10,6 +10,7 @@ import {
   broadcastNotification,
   getBroadcastHistory,
 } from '@/services/notificationService';
+import logger from '@/utils/logger';
 
 const DEFAULT_LIMIT = 20;
 
@@ -169,7 +170,7 @@ export const adminBroadcastNotification = async (
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-    console.error('[Admin Broadcast] Error:', message);
+    logger.error('[Admin Broadcast] Error:', message);
     res.status(500).json({ success: false, message: 'Lỗi server', error: message });
   }
 };
@@ -191,7 +192,7 @@ export const adminGetBroadcastHistory = async (
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-    console.error('[Admin Broadcast History] Error:', message);
+    logger.error('[Admin Broadcast History] Error:', message);
     res.status(500).json({ success: false, message: 'Lỗi server', error: message });
   }
 };

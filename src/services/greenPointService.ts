@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import User from '@/models/User';
 import PointLog, { IPointLog } from '@/models/PointLog';
 import { checkAndAwardBadges } from '@/services/badgeService';
+import logger from '@/utils/logger';
 
 export class GreenPointServiceError extends Error {
   public statusCode: number;
@@ -108,7 +109,7 @@ export async function awardGreenPoints(
   try {
     await checkAndAwardBadges(userId, 'GREENPOINTS_AWARDED');
   } catch (err) {
-    console.warn(
+    logger.warn(
       '[GreenPointService] badge check after awardGreenPoints failed:',
       err
     );
@@ -166,12 +167,12 @@ export async function awardTransactionPoints(
   try {
     await checkAndAwardBadges(requesterId, 'GREENPOINTS_AWARDED');
   } catch (err) {
-    console.warn('[GreenPointService] badge check (requester) failed:', err);
+    logger.warn('[GreenPointService] badge check (requester) failed:', err);
   }
   try {
     await checkAndAwardBadges(ownerId, 'GREENPOINTS_AWARDED');
   } catch (err) {
-    console.warn('[GreenPointService] badge check (owner) failed:', err);
+    logger.warn('[GreenPointService] badge check (owner) failed:', err);
   }
 }
 

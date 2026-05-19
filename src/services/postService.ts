@@ -29,7 +29,7 @@ const groqClient = process.env.GROQ_API_KEY
   : null;
 
 if (!groqClient) {
-  console.warn('[AI Moderation] GROQ_API_KEY not set — AI moderation disabled');
+  logger.warn('[AI Moderation] GROQ_API_KEY not set — AI moderation disabled');
 } else {
   logger.info('[AI Moderation] Groq client initialized');
 }
@@ -102,7 +102,7 @@ Trả về JSON (CHỈ JSON, không thêm text):
     );
     return { trustScore, reason: parsed.reason || 'Không có lý do cụ thể' };
   } catch (error) {
-    console.error('[AI Moderation] Groq API error:', error);
+    logger.error('[AI Moderation] Groq API error:', error);
     return { trustScore: 60, reason: 'Lỗi khi gọi AI kiểm duyệt' };
   }
 }
@@ -178,7 +178,7 @@ export async function runAIModerationJob(
 
     return decision;
   } catch (error) {
-    console.error(`AI moderation job failed for post ${postId}:`, error);
+    logger.error(`AI moderation job failed for post ${postId}:`, error);
     return null;
   }
 }

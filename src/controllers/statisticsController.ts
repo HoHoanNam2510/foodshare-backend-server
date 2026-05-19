@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { getMyStatistics } from '@/services/statisticsService';
 import { StatisticsQuery } from '@/validations/statisticsValidation';
+import logger from '@/utils/logger';
 
 export async function getMyStatisticsController(
   req: Request,
@@ -27,7 +28,7 @@ export async function getMyStatisticsController(
       data: result,
     });
   } catch (error) {
-    console.error('Statistics controller error:', error);
+    logger.error('Statistics controller error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve statistics',

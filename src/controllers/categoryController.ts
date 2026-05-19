@@ -8,6 +8,7 @@ import {
   adminUpdateCategory,
   adminDeleteCategory,
 } from '@/services/categoryService';
+import logger from '@/utils/logger';
 
 function handleCategoryError(error: unknown, res: Response): void {
   const err = error as Error & { statusCode?: number };
@@ -16,7 +17,7 @@ function handleCategoryError(error: unknown, res: Response): void {
     statusCode === 500 ? 'Đã xảy ra lỗi từ phía server' : err.message;
 
   if (statusCode === 500) {
-    console.error('❌ Category Error:', err.message);
+    logger.error('❌ Category Error:', err.message);
   }
 
   res.status(statusCode).json({ success: false, message });

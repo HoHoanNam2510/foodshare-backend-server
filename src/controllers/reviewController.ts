@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 
+import logger from '@/utils/logger';
 import {
   ReviewServiceError,
   createReview as createReviewService,
@@ -21,7 +22,7 @@ function handleReviewError(error: unknown, res: Response): void {
   }
 
   const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-  console.error('❌ Review Error:', message);
+  logger.error('❌ Review Error:', message);
   res.status(500).json({
     success: false,
     message: 'Đã xảy ra lỗi từ phía server',

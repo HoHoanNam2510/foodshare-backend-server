@@ -18,6 +18,7 @@ import {
 import { softDeleteUser, SoftDeleteError } from '@/services/softDeleteService';
 import { checkAndAwardBadges } from '@/services/badgeService';
 import { getImpactStats, UserServiceError } from '@/services/userService';
+import logger from '@/utils/logger';
 
 // --- BƯỚC 1: GỬI MÃ XÁC MINH EMAIL (Chưa tạo account) ---
 export const registerSendCode = async (
@@ -196,7 +197,7 @@ export const completeProfile = async (
 
     if (!result.onboardingRequired) {
       checkAndAwardBadges(userId, 'PROFILE_COMPLETED').catch((err) => {
-        console.warn(
+        logger.warn(
           '[AuthController] badge check (PROFILE_COMPLETED) failed:',
           err
         );
@@ -344,7 +345,7 @@ export const updateProfile = async (
     );
     if (isCompleted) {
       checkAndAwardBadges(userId, 'PROFILE_COMPLETED').catch((err) => {
-        console.warn(
+        logger.warn(
           '[AuthController] badge check (PROFILE_COMPLETED) after updateProfile failed:',
           err
         );

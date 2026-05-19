@@ -334,7 +334,7 @@ export const updatePost = async (
 
     if (hasSensitiveChange && updatedPost) {
       runAIModerationJob(String(updatedPost._id), 'ON_UPDATE').catch((err) => {
-        console.error('Background AI re-moderation failed:', err);
+        logger.error('Background AI re-moderation failed:', err);
       });
     }
   } catch (error: unknown) {

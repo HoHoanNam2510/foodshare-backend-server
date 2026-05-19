@@ -15,6 +15,7 @@ import {
   adminGetMessagesDetail as adminGetMessagesDetailService,
   adminToggleLockConversation as adminToggleLockConversationService,
 } from '@/services/chatService';
+import logger from '@/utils/logger';
 
 function handleChatError(error: unknown, res: Response): void {
   if (error instanceof ChatServiceError) {
@@ -26,7 +27,7 @@ function handleChatError(error: unknown, res: Response): void {
   }
 
   const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-  console.error('❌ Chat Error:', message);
+  logger.error('❌ Chat Error:', message);
   res.status(500).json({
     success: false,
     message: 'Đã xảy ra lỗi từ phía server',

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 
+import logger from '@/utils/logger';
 import {
   softDeleteVoucher,
   SoftDeleteError,
@@ -27,7 +28,7 @@ function handleVoucherError(error: unknown, res: Response): void {
   }
 
   const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-  console.error('❌ Voucher Error:', message);
+  logger.error('❌ Voucher Error:', message);
   res.status(500).json({
     success: false,
     message: 'Đã xảy ra lỗi từ phía server',

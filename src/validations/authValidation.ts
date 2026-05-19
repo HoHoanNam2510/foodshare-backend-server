@@ -42,7 +42,7 @@ export const paymentInfoSchema = z.object({
   bankCode: z.string().optional(),
   bankAccountNumber: z.string().optional(),
   bankAccountName: z.string().optional(),
-  preferredDisbursement: z.enum(['MOMO', /* 'ZALOPAY', */ 'BANK']).optional(), // TODO: Re-add ZALOPAY when ready
+  preferredDisbursement: z.enum(['MOMO', 'BANK']).optional(),
 });
 
 export const registerStoreSchema = z.object({

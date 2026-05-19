@@ -475,7 +475,7 @@ async function executePenalty(
       }
       transaction.status = 'CANCELLED';
       await transaction.save();
-      // TODO: Kích hoạt event hoàn tiền thực tế cho người mua (payment gateway)
+      // Future: trigger real refund event to payment gateway (BANK_TRANSFER orders)
       break;
     }
 

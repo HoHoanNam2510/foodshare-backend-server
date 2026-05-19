@@ -9,6 +9,7 @@ import {
   LeaderboardPeriod,
   LeaderboardRole,
 } from '@/services/greenPointService';
+import logger from '@/utils/logger';
 
 function handleGreenPointError(error: unknown, res: Response): void {
   if (error instanceof GreenPointServiceError) {
@@ -20,7 +21,7 @@ function handleGreenPointError(error: unknown, res: Response): void {
   }
 
   const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-  console.error('❌ GreenPoint Error:', message);
+  logger.error('❌ GreenPoint Error:', message);
   res.status(500).json({
     success: false,
     message: 'Đã xảy ra lỗi từ phía server',
