@@ -1,5 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { verifyAuth, verifyAdmin } from '@/middlewares/authMiddleware';
+import { validateBody } from '@/middlewares/validateBodyMiddleware';
+import {
+  updateSystemBankSchema,
+  updateAIModerationSchema,
+} from '@/validations/configValidation';
 import SystemConfig from '@/models/SystemConfig';
 import AIPostModerationLog from '@/models/AIPostModerationLog';
 import { runAIBatchModerationJob } from '@/services/postService';
@@ -7,8 +12,6 @@ import { runAIBatchModerationJob } from '@/services/postService';
 const router = Router();
 
 router.use(verifyAuth, verifyAdmin);
-
-const VALID_INTERVALS = [1, 2, 6, 12, 24];
 
 /**
  * GET /api/config
@@ -29,106 +32,70 @@ router.get('/', async (_req: Request, res: Response) => {
  * PUT /api/config
  * Tạo hoặc cập nhật cấu hình tài khoản ngân hàng hệ thống (upsert singleton)
  */
-router.put('/', async (req: Request, res: Response) => {
-  try {
-    const {
-      systemBankName,
-      systemBankCode,
-      systemBankAccountNumber,
-      systemBankAccountName,
-    } = req.body;
-
-    if (
-      !systemBankName ||
-      !systemBankCode ||
-      !systemBankAccountNumber ||
-      !systemBankAccountName
-    ) {
-      res.status(400).json({
-        success: false,
-        message: 'Vui lòng cung cấp đầy đủ thông tin ngân hàng hệ thống',
-      });
-      return;
-    }
-
-    const config = await SystemConfig.findOneAndUpdate(
-      {},
-      {
+router.put(
+  '/',
+  validateBody(updateSystemBankSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const {
         systemBankName,
         systemBankCode,
         systemBankAccountNumber,
         systemBankAccountName,
-      },
-      { upsert: true, new: true, runValidators: true }
-    );
+      } = req.body;
 
-    res.status(200).json({ success: true, data: config });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Lỗi không xác định';
-    res.status(500).json({ success: false, message });
+      const config = await SystemConfig.findOneAndUpdate(
+        {},
+        {
+          systemBankName,
+          systemBankCode,
+          systemBankAccountNumber,
+          systemBankAccountName,
+        },
+        { upsert: true, new: true, runValidators: true }
+      );
+
+      res.status(200).json({ success: true, data: config });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Lỗi không xác định';
+      res.status(500).json({ success: false, message });
+    }
   }
-});
+);
 
 /**
  * PUT /api/config/ai-moderation
  * Cập nhật cài đặt AI kiểm duyệt bài đăng
  */
-router.put('/ai-moderation', async (req: Request, res: Response) => {
-  try {
-    const { enabled, intervalHours, trustScoreThresholds } = req.body;
+router.put(
+  '/ai-moderation',
+  validateBody(updateAIModerationSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const { enabled, intervalHours, trustScoreThresholds } = req.body;
 
-    if (typeof enabled !== 'boolean') {
-      res
-        .status(400)
-        .json({ success: false, message: 'enabled phải là boolean' });
-      return;
+      const config = await SystemConfig.findOneAndUpdate(
+        {},
+        {
+          'aiModeration.enabled': enabled,
+          'aiModeration.intervalHours': intervalHours,
+          'aiModeration.trustScoreThresholds.reject':
+            trustScoreThresholds.reject,
+          'aiModeration.trustScoreThresholds.approve':
+            trustScoreThresholds.approve,
+        },
+        { upsert: true, new: true, runValidators: true }
+      );
+
+      res.status(200).json({ success: true, data: config });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Lỗi không xác định';
+      res.status(500).json({ success: false, message });
     }
-
-    if (!VALID_INTERVALS.includes(Number(intervalHours))) {
-      res.status(400).json({
-        success: false,
-        message: `intervalHours phải là một trong: ${VALID_INTERVALS.join(', ')}`,
-      });
-      return;
-    }
-
-    const reject = Number(trustScoreThresholds?.reject);
-    const approve = Number(trustScoreThresholds?.approve);
-
-    if (
-      isNaN(reject) ||
-      isNaN(approve) ||
-      reject < 0 ||
-      approve > 100 ||
-      reject >= approve
-    ) {
-      res.status(400).json({
-        success: false,
-        message:
-          'trustScoreThresholds không hợp lệ: cần 0 ≤ reject < approve ≤ 100',
-      });
-      return;
-    }
-
-    const config = await SystemConfig.findOneAndUpdate(
-      {},
-      {
-        'aiModeration.enabled': enabled,
-        'aiModeration.intervalHours': intervalHours,
-        'aiModeration.trustScoreThresholds.reject': reject,
-        'aiModeration.trustScoreThresholds.approve': approve,
-      },
-      { upsert: true, new: true, runValidators: true }
-    );
-
-    res.status(200).json({ success: true, data: config });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : 'Lỗi không xác định';
-    res.status(500).json({ success: false, message });
   }
-});
+);
 
 /**
  * POST /api/config/ai-moderation/run

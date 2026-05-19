@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { verifyAuth, verifyAdmin } from '@/middlewares/authMiddleware';
+import { validateBody } from '@/middlewares/validateBodyMiddleware';
 import {
   getBadgeCatalogHandler,
   getMyBadgesHandler,
@@ -10,6 +11,10 @@ import {
   adminToggleBadgeHandler,
   adminGetBadgeStatsHandler,
 } from '@/controllers/badgeController';
+import {
+  createBadgeSchema,
+  updateBadgeSchema,
+} from '@/validations/badgeValidation';
 
 const router = Router();
 
@@ -35,10 +40,22 @@ router.get('/admin/stats', verifyAuth, verifyAdmin, adminGetBadgeStatsHandler);
 router.get('/admin', verifyAuth, verifyAdmin, adminGetAllBadgesHandler);
 
 // POST /api/badges/admin — Admin tạo huy hiệu mới
-router.post('/admin', verifyAuth, verifyAdmin, adminCreateBadgeHandler);
+router.post(
+  '/admin',
+  verifyAuth,
+  verifyAdmin,
+  validateBody(createBadgeSchema),
+  adminCreateBadgeHandler
+);
 
 // PUT /api/badges/admin/:badgeId — Admin cập nhật huy hiệu
-router.put('/admin/:badgeId', verifyAuth, verifyAdmin, adminUpdateBadgeHandler);
+router.put(
+  '/admin/:badgeId',
+  verifyAuth,
+  verifyAdmin,
+  validateBody(updateBadgeSchema),
+  adminUpdateBadgeHandler
+);
 
 // PATCH /api/badges/admin/:badgeId/toggle — Admin bật/tắt huy hiệu
 router.patch(
