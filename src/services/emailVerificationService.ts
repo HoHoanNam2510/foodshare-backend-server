@@ -25,15 +25,23 @@ export class EmailVerificationError extends Error {
   }
 }
 
-export async function initiateEmailVerification(userId: string): Promise<{ expiresInMinutes: number }> {
-  const user = await User.findById(userId).select('email authProvider isEmailVerified');
+export async function initiateEmailVerification(
+  userId: string
+): Promise<{ expiresInMinutes: number }> {
+  const user = await User.findById(userId).select(
+    'email authProvider isEmailVerified'
+  );
 
   if (!user) {
     throw new EmailVerificationError('Không tìm thấy người dùng', 404);
   }
 
   if (user.isEmailVerified) {
-    throw new EmailVerificationError('Email đã được xác minh trước đó', 400, 'ALREADY_VERIFIED');
+    throw new EmailVerificationError(
+      'Email đã được xác minh trước đó',
+      400,
+      'ALREADY_VERIFIED'
+    );
   }
 
   const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
@@ -57,7 +65,11 @@ export async function initiateEmailVerification(userId: string): Promise<{ expir
     { $set: { usedAt: new Date() } }
   );
 
-  const codeDoc = await EmailVerificationCode.create({ userId, code, expiresAt });
+  const codeDoc = await EmailVerificationCode.create({
+    userId,
+    code,
+    expiresAt,
+  });
 
   try {
     await sendVerificationEmail({
@@ -73,8 +85,14 @@ export async function initiateEmailVerification(userId: string): Promise<{ expir
   return { expiresInMinutes: CODE_EXPIRE_MINUTES };
 }
 
-export async function confirmEmailVerification(userId: string, code: string): Promise<void> {
-  if (typeof code !== 'string' || !new RegExp(`^\\d{${CODE_LENGTH}}$`).test(code)) {
+export async function confirmEmailVerification(
+  userId: string,
+  code: string
+): Promise<void> {
+  if (
+    typeof code !== 'string' ||
+    !new RegExp(`^\\d{${CODE_LENGTH}}$`).test(code)
+  ) {
     throw new EmailVerificationError(
       `Mã xác minh phải gồm đúng ${CODE_LENGTH} chữ số`,
       400
@@ -88,7 +106,11 @@ export async function confirmEmailVerification(userId: string, code: string): Pr
   }
 
   if (user.isEmailVerified) {
-    throw new EmailVerificationError('Email đã được xác minh trước đó', 400, 'ALREADY_VERIFIED');
+    throw new EmailVerificationError(
+      'Email đã được xác minh trước đó',
+      400,
+      'ALREADY_VERIFIED'
+    );
   }
 
   const now = new Date();
@@ -100,7 +122,10 @@ export async function confirmEmailVerification(userId: string, code: string): Pr
   }).sort({ createdAt: -1 });
 
   if (!codeRecord) {
-    throw new EmailVerificationError('Mã xác minh không hợp lệ hoặc đã hết hạn', 400);
+    throw new EmailVerificationError(
+      'Mã xác minh không hợp lệ hoặc đã hết hạn',
+      400
+    );
   }
 
   codeRecord.usedAt = now;

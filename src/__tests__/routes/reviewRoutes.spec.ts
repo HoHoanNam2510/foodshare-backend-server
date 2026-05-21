@@ -32,9 +32,13 @@ jest.mock('@/controllers/reviewController', () => ({
 process.env.JWT_SECRET = 'test-secret';
 
 function createToken(role: 'USER' | 'ADMIN'): string {
-  return jwt.sign({ id: '507f191e810c19729de860ea', role }, process.env.JWT_SECRET as string, {
-    expiresIn: '1h',
-  });
+  return jwt.sign(
+    { id: '507f191e810c19729de860ea', role },
+    process.env.JWT_SECRET as string,
+    {
+      expiresIn: '1h',
+    }
+  );
 }
 
 describe('reviewRoutes auth/role/validation', () => {

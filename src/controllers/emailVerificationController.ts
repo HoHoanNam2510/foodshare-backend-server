@@ -36,7 +36,8 @@ export const sendEmailVerificationCode = async (
       });
       return;
     }
-    const errorMessage = error instanceof Error ? error.message : 'Không thể gửi mã xác minh';
+    const errorMessage =
+      error instanceof Error ? error.message : 'Không thể gửi mã xác minh';
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi gửi mã xác minh',
@@ -76,7 +77,8 @@ export const verifyEmail = async (
       });
       return;
     }
-    const errorMessage = error instanceof Error ? error.message : 'Xác minh email thất bại';
+    const errorMessage =
+      error instanceof Error ? error.message : 'Xác minh email thất bại';
     res.status(500).json({
       success: false,
       message: 'Lỗi server',

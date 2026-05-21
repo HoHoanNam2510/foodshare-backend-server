@@ -167,7 +167,11 @@ export async function getUserNotifications(
 ): Promise<NotificationPage> {
   const skip = (page - 1) * limit;
   const [notifications, total] = await Promise.all([
-    Notification.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Notification.find({ userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
     Notification.countDocuments({ userId }),
   ]);
   return {
@@ -184,7 +188,11 @@ export async function markNotificationRead(
   userId: string,
   id: string
 ): Promise<unknown | null> {
-  return Notification.findOneAndUpdate({ _id: id, userId }, { isRead: true }, { new: true });
+  return Notification.findOneAndUpdate(
+    { _id: id, userId },
+    { isRead: true },
+    { new: true }
+  );
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<void> {
@@ -198,7 +206,10 @@ export async function deleteUserNotification(
   return Notification.findOneAndDelete({ _id: id, userId });
 }
 
-export async function saveUserPushToken(userId: string, token: string): Promise<void> {
+export async function saveUserPushToken(
+  userId: string,
+  token: string
+): Promise<void> {
   await User.findByIdAndUpdate(userId, { expoPushToken: token });
 }
 

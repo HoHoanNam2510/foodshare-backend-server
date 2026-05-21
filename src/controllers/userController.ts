@@ -129,10 +129,7 @@ export const reviewKyc = async (req: Request, res: Response): Promise<void> => {
       try {
         await checkAndAwardBadges(id, 'KYC_APPROVED');
       } catch (err) {
-        logger.warn(
-          '[UserController] badge check (KYC_APPROVED) failed:',
-          err
-        );
+        logger.warn('[UserController] badge check (KYC_APPROVED) failed:', err);
       }
     }
   } catch (error: unknown) {
