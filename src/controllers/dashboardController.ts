@@ -19,8 +19,10 @@ export const dashboardStats = async (
   try {
     const stats = await getOverviewStats();
     res.json({ success: true, data: stats });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message });
   }
 };
 
@@ -52,7 +54,6 @@ export const dashboardChart = async (
       return;
     }
 
-    // Parse optional anchor date
     let anchor: Date | undefined;
     if (dateStr) {
       const parsed = new Date(dateStr);
@@ -63,8 +64,10 @@ export const dashboardChart = async (
 
     const data = await getGrowthChart(tab, range, anchor);
     res.json({ success: true, data });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message });
   }
 };
 
@@ -84,7 +87,7 @@ export const dashboardTable = async (
 
     const tableFns: Record<
       string,
-      (p: number, l: number, s: SortOrder) => Promise<any>
+      (p: number, l: number, s: SortOrder) => Promise<unknown>
     > = {
       users: getRecentUsers,
       posts: getRecentPosts,
@@ -102,8 +105,10 @@ export const dashboardTable = async (
     }
 
     const result = await fn(page, limit, sortOrder);
-    res.json({ success: true, ...result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.json({ success: true, ...(result as object) });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res.status(500).json({ success: false, message });
   }
 };

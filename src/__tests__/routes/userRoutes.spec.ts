@@ -21,14 +21,21 @@ jest.mock('@/controllers/userController', () => ({
   deleteUser: jest.fn((req, res) =>
     res.status(200).json({ success: true, data: { id: req.params.id } })
   ),
+  reviewKyc: jest.fn((req, res) =>
+    res.status(200).json({ success: true, data: { id: req.params.id } })
+  ),
 }));
 
-const JWT_SECRET = 'fallback_secret_key_for_dev';
+process.env.JWT_SECRET = 'test-secret';
 
 function createToken(role: 'USER' | 'ADMIN'): string {
-  return jwt.sign({ id: '507f191e810c19729de860ea', role }, JWT_SECRET, {
-    expiresIn: '1h',
-  });
+  return jwt.sign(
+    { id: '507f191e810c19729de860ea', role },
+    process.env.JWT_SECRET as string,
+    {
+      expiresIn: '1h',
+    }
+  );
 }
 
 describe('userRoutes auth/role/validation', () => {

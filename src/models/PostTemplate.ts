@@ -37,6 +37,7 @@ const PostTemplateSchema = new Schema<IPostTemplate>(
       default: 0,
       min: 0,
       validate: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         validator: function (this: any, value: number) {
           if (this.type === 'P2P_FREE') return value === 0;
           if (this.type === 'B2C_MYSTERY_BAG') return value > 0;

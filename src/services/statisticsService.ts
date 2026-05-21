@@ -1,6 +1,5 @@
 import mongoose, { PipelineStage } from 'mongoose';
 import Transaction from '@/models/Transaction';
-import Post from '@/models/Post';
 import PointLog from '@/models/PointLog';
 import { StatisticsQuery } from '@/validations/statisticsValidation';
 

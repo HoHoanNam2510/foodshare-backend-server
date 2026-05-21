@@ -45,6 +45,7 @@ const TransactionSchema = new Schema<ITransaction>(
       required: true,
       validate: {
         // Ràng buộc: Xin đồ (REQUEST) thì phải FREE, Mua (ORDER) thì phải BANK_TRANSFER
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         validator: function (this: any, value: string) {
           if (this.type === 'REQUEST') return value === 'FREE';
           if (this.type === 'ORDER') return value === 'BANK_TRANSFER';

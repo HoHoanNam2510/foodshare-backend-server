@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 
+import logger from '@/utils/logger';
 import {
   SoftDeleteError,
   TrashCollection,
@@ -16,7 +17,6 @@ import {
   getTrashItems,
   runCleanup,
 } from '@/services/softDeleteService';
-import SystemConfig from '@/models/SystemConfig';
 
 function handleTrashError(error: unknown, res: Response): void {
   if (error instanceof SoftDeleteError) {
@@ -27,7 +27,7 @@ function handleTrashError(error: unknown, res: Response): void {
   }
 
   const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-  console.error('❌ Trash Error:', message);
+  logger.error('❌ Trash Error:', message);
   res
     .status(500)
     .json({ success: false, message: 'Đã xảy ra lỗi từ phía server' });
@@ -344,14 +344,11 @@ export const restoreUser = async (
  * Admin kích hoạt dọn dẹp thùng rác ngay lập tức.
  */
 export const cleanupNow = async (
-  req: Request,
+  _req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const config = await SystemConfig.findOne();
-    const gracePeriodDays = config?.softDelete?.gracePeriodDays ?? 30;
-
-    const results = await runCleanup(gracePeriodDays);
+    const results = await runCleanup();
     const totalPurged = results.reduce((sum, r) => sum + r.purgedCount, 0);
 
     res.status(200).json({

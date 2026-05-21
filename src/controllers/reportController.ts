@@ -11,6 +11,7 @@ import {
   adminProcessReport as adminProcessReportService,
 } from '@/services/reportService';
 import { ReportStatus, ReportTargetType, ReportReason } from '@/models/Report';
+import logger from '@/utils/logger';
 
 function handleReportError(error: unknown, res: Response): void {
   if (error instanceof ReportServiceError) {
@@ -22,7 +23,7 @@ function handleReportError(error: unknown, res: Response): void {
   }
 
   const message = error instanceof Error ? error.message : 'Lỗi không xác định';
-  console.error('❌ Report Error:', message);
+  logger.error('❌ Report Error:', message);
   res.status(500).json({
     success: false,
     message: 'Đã xảy ra lỗi từ phía server',

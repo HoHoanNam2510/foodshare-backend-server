@@ -28,6 +28,7 @@ export function softDeletePlugin(schema: Schema): void {
   schema.index({ isDeleted: 1, deletedAt: -1 });
 
   // Auto-filter: chỉ thêm nếu query chưa có điều kiện isDeleted nào
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema.pre(/^find/, function (this: any) {
     const filter = this.getFilter();
     if (!Object.prototype.hasOwnProperty.call(filter, 'isDeleted')) {
@@ -36,6 +37,7 @@ export function softDeletePlugin(schema: Schema): void {
   });
 
   // Auto-filter cho countDocuments
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema.pre('countDocuments', function (this: any) {
     const conditions = this.getFilter();
     if (!Object.prototype.hasOwnProperty.call(conditions, 'isDeleted')) {

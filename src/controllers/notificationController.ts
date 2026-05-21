@@ -1,11 +1,16 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import Notification from '@/models/Notification';
-import User from '@/models/User';
 import {
+  getUserNotifications,
+  getUserUnreadCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+  deleteUserNotification,
+  saveUserPushToken,
   broadcastNotification,
   getBroadcastHistory,
 } from '@/services/notificationService';
+import logger from '@/utils/logger';
 
 const DEFAULT_LIMIT = 20;
 
@@ -14,33 +19,15 @@ export const getMyNotifications = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id as string;
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(
       50,
       Math.max(1, Number(req.query.limit) || DEFAULT_LIMIT)
     );
-    const skip = (page - 1) * limit;
 
-    const [notifications, total] = await Promise.all([
-      Notification.find({ userId })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Notification.countDocuments({ userId }),
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: notifications,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
+    const result = await getUserNotifications(userId, page, limit);
+    res.status(200).json({ success: true, ...result });
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
@@ -55,8 +42,8 @@ export const getUnreadCount = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.user?.id;
-    const count = await Notification.countDocuments({ userId, isRead: false });
+    const userId = req.user?.id as string;
+    const count = await getUserUnreadCount(userId);
     res.status(200).json({ success: true, data: { count } });
   } catch (error: unknown) {
     const message =
@@ -72,7 +59,7 @@ export const markAsRead = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id as string;
     const id = String(req.params.id);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -82,12 +69,7 @@ export const markAsRead = async (
       return;
     }
 
-    const notification = await Notification.findOneAndUpdate(
-      { _id: id, userId },
-      { isRead: true },
-      { new: true }
-    );
-
+    const notification = await markNotificationRead(userId, id);
     if (!notification) {
       res
         .status(404)
@@ -110,8 +92,8 @@ export const markAllAsRead = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.user?.id;
-    await Notification.updateMany({ userId, isRead: false }, { isRead: true });
+    const userId = req.user?.id as string;
+    await markAllNotificationsRead(userId);
     res
       .status(200)
       .json({ success: true, message: 'Đã đánh dấu tất cả là đã đọc' });
@@ -129,7 +111,7 @@ export const deleteNotification = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id as string;
     const id = String(req.params.id);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -139,11 +121,7 @@ export const deleteNotification = async (
       return;
     }
 
-    const notification = await Notification.findOneAndDelete({
-      _id: id,
-      userId,
-    });
-
+    const notification = await deleteUserNotification(userId, id);
     if (!notification) {
       res
         .status(404)
@@ -166,7 +144,7 @@ export const savePushToken = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id as string;
     const { token } = req.body as { token?: string };
 
     if (!token || typeof token !== 'string') {
@@ -176,8 +154,7 @@ export const savePushToken = async (
       return;
     }
 
-    await User.findByIdAndUpdate(userId, { expoPushToken: token });
-
+    await saveUserPushToken(userId, token);
     res.status(200).json({ success: true, message: 'Đã lưu push token' });
   } catch (error: unknown) {
     const message =
@@ -193,10 +170,9 @@ export const adminBroadcastNotification = async (
   res: Response
 ): Promise<void> => {
   try {
-    const adminId = req.user?.id;
+    const adminId = req.user?.id as string;
     const { targetRole, title, body, type } = req.body;
 
-    // Validate required fields
     if (!targetRole || !title || !body || !type) {
       res.status(400).json({
         success: false,
@@ -205,7 +181,6 @@ export const adminBroadcastNotification = async (
       return;
     }
 
-    // Validate enums
     const validTargetRoles = ['ALL', 'USER', 'STORE', 'ADMIN'];
     const validTypes = ['TRANSACTION', 'RADAR', 'SYSTEM', 'VOUCHER'];
 
@@ -224,7 +199,7 @@ export const adminBroadcastNotification = async (
     }
 
     const broadcast = await broadcastNotification(
-      adminId!,
+      adminId,
       targetRole,
       title,
       body,
@@ -239,7 +214,7 @@ export const adminBroadcastNotification = async (
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
-    console.error('[Admin Broadcast] Error:', message);
+    logger.error('[Admin Broadcast] Error:', message);
     res
       .status(500)
       .json({ success: false, message: 'Lỗi server', error: message });
@@ -264,7 +239,7 @@ export const adminGetBroadcastHistory = async (
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';
-    console.error('[Admin Broadcast History] Error:', message);
+    logger.error('[Admin Broadcast History] Error:', message);
     res
       .status(500)
       .json({ success: false, message: 'Lỗi server', error: message });

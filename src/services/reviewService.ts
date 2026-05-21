@@ -6,6 +6,7 @@ import Transaction from '@/models/Transaction';
 import PointLog from '@/models/PointLog';
 import { checkAndAwardBadges } from '@/services/badgeService';
 import { createNotification } from '@/services/notificationService';
+import logger from '@/utils/logger';
 
 // Hằng số
 const REVIEW_REWARD_POINTS = 2;
@@ -142,13 +143,13 @@ export async function createReview(
 
   // Cảnh báo nếu rating tụt dưới ngưỡng
   if (newAverage < LOW_RATING_BAN_THRESHOLD) {
-    // TODO: Gửi Push Notification / Email cảnh báo khóa tài khoản
-    console.warn(
+    // Future: send push notification / email warning about potential account lock
+    logger.warn(
       `⚠️ User ${revieweeId} có averageRating ${newAverage} < ${LOW_RATING_BAN_THRESHOLD} → Cần xem xét khóa`
     );
   } else if (newAverage < LOW_RATING_WARNING_THRESHOLD) {
-    // TODO: Gửi Push Notification cảnh báo nhẹ
-    console.warn(
+    // Future: send soft warning push notification
+    logger.warn(
       `⚠️ User ${revieweeId} có averageRating ${newAverage} < ${LOW_RATING_WARNING_THRESHOLD} → Cảnh báo`
     );
   }
@@ -176,7 +177,7 @@ export async function createReview(
   try {
     await checkAndAwardBadges(revieweeId, 'REVIEW_RECEIVED');
   } catch (err) {
-    console.warn('[ReviewService] badge check (REVIEW_RECEIVED) failed:', err);
+    logger.warn('[ReviewService] badge check (REVIEW_RECEIVED) failed:', err);
   }
 
   return review;

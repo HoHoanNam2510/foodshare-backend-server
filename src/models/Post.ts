@@ -59,6 +59,7 @@ const PostSchema = new Schema<IPost>(
       min: 0,
       validate: {
         // Validation tùy chỉnh: B2C thì giá phải > 0, P2P thì giá phải = 0
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         validator: function (this: any, value: number) {
           if (this.type === 'P2P_FREE') return value === 0;
           if (this.type === 'B2C_MYSTERY_BAG') return value > 0;

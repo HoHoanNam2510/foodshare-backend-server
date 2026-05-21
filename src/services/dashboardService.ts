@@ -8,6 +8,9 @@ import mongoose from 'mongoose';
 
 export type TimeRange = 'day' | 'week' | 'month';
 
+type AggregateDoc = { _id: unknown; total: number };
+type AnyMongooseModel = mongoose.Model<mongoose.Document>;
+
 interface ChartPoint {
   name: string;
   total: number;
@@ -70,7 +73,7 @@ function getDateRange(
   end: Date;
   buckets: string[];
   groupFormat: Record<string, unknown>;
-  labelFn: (doc: any) => string;
+  labelFn: (doc: AggregateDoc) => string;
 } {
   const ref = anchor ?? new Date();
 
@@ -86,7 +89,7 @@ function getDateRange(
       groupFormat: {
         $multiply: [{ $floor: { $divide: [{ $hour: '$createdAt' }, 4] } }, 4],
       },
-      labelFn: (doc: any) => `${String(doc._id).padStart(2, '0')}:00`,
+      labelFn: (doc) => `${String(doc._id).padStart(2, '0')}:00`,
     };
   }
 
@@ -100,7 +103,7 @@ function getDateRange(
       end,
       buckets,
       groupFormat: { $dayOfWeek: '$createdAt' }, // 1=Sun, 2=Mon, ...
-      labelFn: (doc: any) => {
+      labelFn: (doc) => {
         const map: Record<number, string> = {
           2: 'T2',
           3: 'T3',
@@ -110,7 +113,7 @@ function getDateRange(
           7: 'T7',
           1: 'CN',
         };
-        return map[doc._id] || '';
+        return map[doc._id as number] || '';
       },
     };
   }
@@ -130,12 +133,12 @@ function getDateRange(
     end,
     buckets,
     groupFormat: { $ceil: { $divide: [{ $dayOfMonth: '$createdAt' }, 7] } },
-    labelFn: (doc: any) => `Tuần ${doc._id}`,
+    labelFn: (doc) => `Tuần ${doc._id}`,
   };
 }
 
 async function getGrowthData(
-  model: mongoose.Model<any>,
+  model: AnyMongooseModel,
   range: TimeRange,
   anchor?: Date
 ): Promise<ChartPoint[]> {
@@ -288,7 +291,7 @@ export async function getGrowthChart(
   range: TimeRange,
   anchor?: Date
 ): Promise<ChartPoint[]> {
-  const modelMap: Record<string, mongoose.Model<any>> = {
+  const modelMap: Record<string, AnyMongooseModel> = {
     users: User,
     posts: Post,
     transactions: Transaction,
@@ -350,7 +353,7 @@ export async function getRecentUsers(
   page: number,
   limit: number = DEFAULT_LIMIT,
   sortOrder: SortOrder = 'desc'
-): Promise<PaginatedResult<any>> {
+): Promise<PaginatedResult<unknown>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
@@ -373,7 +376,7 @@ export async function getRecentPosts(
   page: number,
   limit: number = DEFAULT_LIMIT,
   sortOrder: SortOrder = 'desc'
-): Promise<PaginatedResult<any>> {
+): Promise<PaginatedResult<unknown>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
@@ -399,7 +402,7 @@ export async function getRecentTransactions(
   page: number,
   limit: number = DEFAULT_LIMIT,
   sortOrder: SortOrder = 'desc'
-): Promise<PaginatedResult<any>> {
+): Promise<PaginatedResult<unknown>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
@@ -425,7 +428,7 @@ export async function getRecentReports(
   page: number,
   limit: number = DEFAULT_LIMIT,
   sortOrder: SortOrder = 'desc'
-): Promise<PaginatedResult<any>> {
+): Promise<PaginatedResult<unknown>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
@@ -449,7 +452,7 @@ export async function getAuditLogs(
   page: number,
   limit: number = DEFAULT_LIMIT,
   sortOrder: SortOrder = 'desc'
-): Promise<PaginatedResult<any>> {
+): Promise<PaginatedResult<unknown>> {
   const skip = (page - 1) * limit;
   const sort = sortOrder === 'asc' ? 1 : -1;
 

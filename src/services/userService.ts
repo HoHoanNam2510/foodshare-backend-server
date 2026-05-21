@@ -367,7 +367,7 @@ export async function updateUser(
 export async function reviewKyc(
   id: string,
   action: 'APPROVE' | 'REJECT',
-  rejectionReason?: string
+  _rejectionReason?: string
 ): Promise<Record<string, unknown>> {
   const user = await User.findById(id);
 

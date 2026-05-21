@@ -1,4 +1,12 @@
 import 'dotenv/config';
+
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+if (!process.env.MONGODB_URI) {
+  throw new Error('MONGODB_URI environment variable is required');
+}
+
 import express, { Express, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -31,15 +39,18 @@ import logger from './utils/logger';
 import { startScheduler } from './utils/scheduler';
 import { initNotificationService } from './services/notificationService';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key_for_dev';
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 const app: Express = express();
 const httpServer = createServer(app);
 
-// Khởi tạo Socket.io (Đã giải quyết xong CORS cho web admin và mobile)
+const CORS_ALLOWED_ORIGINS = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : ['http://localhost:3001', 'http://localhost:3000'];
+
 const io = new Server(httpServer, {
   cors: {
-    origin: '*', // Có thể chỉnh lại URL của Web Admin khi deploy thật
+    origin: CORS_ALLOWED_ORIGINS,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   },
 });

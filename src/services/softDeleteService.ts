@@ -1,8 +1,8 @@
-import mongoose from 'mongoose';
+import mongoose, { Model as MongooseModel } from 'mongoose';
 
 import User from '@/models/User';
 import Post from '@/models/Post';
-import Review, { IReview } from '@/models/Review';
+import Review from '@/models/Review';
 import Voucher from '@/models/Voucher';
 import Report from '@/models/Report';
 import Conversation from '@/models/Conversation';
@@ -21,8 +21,9 @@ export class SoftDeleteError extends Error {
   }
 }
 
-// Map tên collection → Mongoose Model
 type AnyRecord = Record<string, unknown>;
+// Generic Mongoose model — used where the document type is determined at runtime
+type AnyModel = MongooseModel<AnyRecord>;
 
 const COLLECTION_MAP = {
   users: User,
@@ -83,22 +84,18 @@ export async function softDeleteUser(
   const now = payload.deletedAt;
   const deletedByOid = payload.deletedBy;
 
-  // 1. Soft delete User
   await User.findByIdAndUpdate(userId, { $set: payload });
 
-  // 2. Cascade: soft delete tất cả Posts của user
   await Post.updateMany(
     { ownerId: userId, isDeleted: { $ne: true } },
     { $set: { isDeleted: true, deletedAt: now, deletedBy: deletedByOid } }
   );
 
-  // 3. Cascade: soft delete Reviews user đã viết (không xóa reviews nhận được)
   await Review.updateMany(
     { reviewerId: userId, isDeleted: { $ne: true } },
     { $set: { isDeleted: true, deletedAt: now, deletedBy: deletedByOid } }
   );
 
-  // 4. Cascade: soft delete Vouchers của Store
   if (user.role === 'STORE') {
     await Voucher.updateMany(
       { creatorId: userId, isDeleted: { $ne: true } },
@@ -113,7 +110,6 @@ export async function softDeleteUser(
     );
   }
 
-  // 5. Cascade: soft delete Conversations + Messages (chỉ cascade những conversation chưa bị xóa)
   const conversations = await Conversation.find({ participants: userId });
 
   if (conversations.length > 0) {
@@ -165,7 +161,6 @@ export async function softDeletePost(
     throw new SoftDeleteError('Bài đăng này đã bị xóa', 400);
   }
 
-  // Chặn xóa nếu còn giao dịch đang hoạt động
   const activeCount = await Transaction.countDocuments({
     postId: post._id,
     status: { $in: ['PENDING', 'ACCEPTED', 'ESCROWED', 'DISPUTED'] },
@@ -216,11 +211,9 @@ export async function softDeleteReview(
     $set: buildSoftDeletePayload(deletedBy),
   });
 
-  // Tính lại averageRating — không tính review vừa bị xóa
   await recalculateAverageRatingExcluding(revieweeId, reviewId);
 }
 
-// Helper: tính lại averageRating sau khi soft delete (aggregate phải filter isDeleted)
 async function recalculateAverageRatingExcluding(
   revieweeId: string,
   excludeReviewId?: string
@@ -324,7 +317,6 @@ export async function softDeleteConversation(
 
   await Conversation.findByIdAndUpdate(conversationId, { $set: payload });
 
-  // Cascade: soft delete tất cả Messages trong conversation
   await Message.updateMany(
     { conversationId, isDeleted: { $ne: true } },
     {
@@ -356,7 +348,7 @@ export async function restoreItem(
     throw new SoftDeleteError('ID không hợp lệ', 400);
   }
 
-  const Model = COLLECTION_MAP[collection] as any;
+  const Model = COLLECTION_MAP[collection] as unknown as AnyModel;
   const item = await Model.findOne({ _id: itemId, isDeleted: true });
 
   if (!item) {
@@ -395,17 +387,17 @@ export async function purgeItem(
     throw new SoftDeleteError('ID không hợp lệ', 400);
   }
 
-  const Model = COLLECTION_MAP[collection] as any;
+  const Model = COLLECTION_MAP[collection] as unknown as AnyModel;
   const item = await Model.findOne({ _id: itemId, isDeleted: true });
 
   if (!item) {
     throw new SoftDeleteError('Không tìm thấy dữ liệu', 404);
   }
 
-  // Cleanup Cloudinary ảnh của Post
   if (collection === 'posts') {
-    if (item.images?.length > 0) {
-      deleteMultipleImagesByUrl(item.images).catch(() => {});
+    const images = item.images as string[] | undefined;
+    if (images && images.length > 0) {
+      deleteMultipleImagesByUrl(images).catch(() => {});
     }
   }
 
@@ -440,12 +432,11 @@ export async function getTrashItems(
 ): Promise<TrashResult[]> {
   const { collection, page = 1, limit = 20, from, to } = filters;
 
-  const dateFilter: Record<string, unknown> = {};
-  if (from || to) {
-    dateFilter.deletedAt = {};
-    if (from) (dateFilter.deletedAt as any).$gte = from;
-    if (to) (dateFilter.deletedAt as any).$lte = to;
-  }
+  const deletedAtBounds: { $gte?: Date; $lte?: Date } = {};
+  if (from) deletedAtBounds.$gte = from;
+  if (to) deletedAtBounds.$lte = to;
+  const dateFilter =
+    from || to ? { deletedAt: deletedAtBounds } : ({} as Record<string, never>);
 
   const baseFilter = { isDeleted: true, ...dateFilter };
   const skip = (page - 1) * limit;
@@ -463,21 +454,16 @@ export async function getTrashItems(
     fields: string
   ): Promise<Map<string, AnyRecord>> => {
     if (ids.length === 0) return new Map();
-    const unique = [...new Set(ids.map((id) => id.toString()))];
+    const unique = [...new Set(ids.map((id) => String(id)))];
     const users = await User.find({ _id: { $in: unique } }, fields)
       .setOptions({ includeDeleted: true })
-      .lean();
-    return new Map(
-      (users as unknown as AnyRecord[]).map((u) => [
-        (u._id as any).toString(),
-        u,
-      ])
-    );
+      .lean<{ _id: mongoose.Types.ObjectId; [key: string]: unknown }[]>();
+    return new Map(users.map((u) => [u._id.toString(), u as AnyRecord]));
   };
 
   const results: TrashResult[] = await Promise.all(
     collectionsToQuery.map(async (col) => {
-      const Model = COLLECTION_MAP[col] as any;
+      const Model = COLLECTION_MAP[col] as unknown as AnyModel;
 
       const [rawData, total] = await Promise.all([
         Model.find(baseFilter)
@@ -488,7 +474,6 @@ export async function getTrashItems(
         Model.countDocuments(baseFilter),
       ]);
 
-      // Manual user-field injection per collection
       let data = rawData as AnyRecord[];
 
       if (col === 'posts' && data.length > 0) {
@@ -501,7 +486,7 @@ export async function getTrashItems(
         );
         data = data.map((p) => ({
           ...p,
-          ownerId: ownerMap.get((p.ownerId as any)?.toString()) ?? p.ownerId,
+          ownerId: ownerMap.get(String(p.ownerId)) ?? p.ownerId,
         }));
       } else if (col === 'reviews' && data.length > 0) {
         const ids = [
@@ -511,10 +496,8 @@ export async function getTrashItems(
         const userMap = await fetchUsersById(ids, 'fullName avatar email');
         data = data.map((r) => ({
           ...r,
-          reviewerId:
-            userMap.get((r.reviewerId as any)?.toString()) ?? r.reviewerId,
-          revieweeId:
-            userMap.get((r.revieweeId as any)?.toString()) ?? r.revieweeId,
+          reviewerId: userMap.get(String(r.reviewerId)) ?? r.reviewerId,
+          revieweeId: userMap.get(String(r.revieweeId)) ?? r.revieweeId,
         }));
       } else if (col === 'vouchers' && data.length > 0) {
         const creatorIds = data
@@ -526,8 +509,7 @@ export async function getTrashItems(
         );
         data = data.map((v) => ({
           ...v,
-          creatorId:
-            creatorMap.get((v.creatorId as any)?.toString()) ?? v.creatorId,
+          creatorId: creatorMap.get(String(v.creatorId)) ?? v.creatorId,
         }));
       } else if (col === 'conversations' && data.length > 0) {
         const allParticipantIds = (
@@ -539,9 +521,9 @@ export async function getTrashItems(
         );
         data = data.map((c) => ({
           ...c,
-          participants: ((c.participants as any[]) ?? []).map(
-            (id: any) => participantMap.get(id?.toString()) ?? id
-          ),
+          participants: (
+            (c.participants as mongoose.Types.ObjectId[]) ?? []
+          ).map((id) => participantMap.get(String(id)) ?? id),
         }));
       }
 
@@ -569,10 +551,15 @@ export interface CleanupResult {
 }
 
 export async function runCleanup(
-  gracePeriodDays: number
+  gracePeriodDays?: number
 ): Promise<CleanupResult[]> {
+  let days = gracePeriodDays;
+  if (days === undefined) {
+    const config = await SystemConfig.findOne();
+    days = config?.softDelete?.gracePeriodDays ?? 30;
+  }
   const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - gracePeriodDays);
+  cutoffDate.setDate(cutoffDate.getDate() - days);
 
   const expiredFilter = {
     isDeleted: true,
@@ -583,22 +570,21 @@ export async function runCleanup(
 
   for (const col of VALID_COLLECTIONS) {
     try {
-      const Model = COLLECTION_MAP[col];
+      const Model = COLLECTION_MAP[col] as unknown as AnyModel;
 
-      // Xử lý đặc biệt: xóa ảnh Cloudinary của Posts trước khi purge
       if (col === 'posts') {
-        const expiredPosts = await Post.find(expiredFilter as any)
+        const expiredPosts = await Model.find(expiredFilter)
           .select('images')
-          .lean();
+          .lean<{ images?: string[] }[]>();
 
         for (const post of expiredPosts) {
-          if ((post as any).images?.length > 0) {
-            deleteMultipleImagesByUrl((post as any).images).catch(() => {});
+          if (post.images && post.images.length > 0) {
+            deleteMultipleImagesByUrl(post.images).catch(() => {});
           }
         }
       }
 
-      const deleteResult = await (Model as any).deleteMany(expiredFilter);
+      const deleteResult = await Model.deleteMany(expiredFilter);
       const purgedCount: number = deleteResult.deletedCount ?? 0;
 
       results.push({ collection: col, purgedCount });
@@ -612,7 +598,6 @@ export async function runCleanup(
     }
   }
 
-  // Cập nhật lastCleanupAt và lastCleanupCount trong SystemConfig
   const totalPurged = results.reduce((sum, r) => sum + r.purgedCount, 0);
   await SystemConfig.findOneAndUpdate(
     {},
@@ -638,20 +623,20 @@ export async function purgeAllNow(): Promise<CleanupResult[]> {
 
   for (const col of VALID_COLLECTIONS) {
     try {
-      const Model = COLLECTION_MAP[col];
+      const Model = COLLECTION_MAP[col] as unknown as AnyModel;
 
       if (col === 'posts') {
-        const deletedPosts = await Post.find(allDeletedFilter as any)
+        const deletedPosts = await Model.find(allDeletedFilter)
           .select('images')
-          .lean();
+          .lean<{ images?: string[] }[]>();
         for (const post of deletedPosts) {
-          if ((post as any).images?.length > 0) {
-            deleteMultipleImagesByUrl((post as any).images).catch(() => {});
+          if (post.images && post.images.length > 0) {
+            deleteMultipleImagesByUrl(post.images).catch(() => {});
           }
         }
       }
 
-      const deleteResult = await (Model as any).deleteMany(allDeletedFilter);
+      const deleteResult = await Model.deleteMany(allDeletedFilter);
       const purgedCount: number = deleteResult.deletedCount ?? 0;
       results.push({ collection: col, purgedCount });
 
@@ -696,7 +681,6 @@ export async function restoreUserWithAssociated(
     throw new SoftDeleteError('Không tìm thấy người dùng trong thùng rác', 404);
   }
 
-  // Restore user
   await User.findByIdAndUpdate(userId, {
     $set: { isDeleted: false },
     $unset: { deletedAt: '', deletedBy: '' },
@@ -707,19 +691,16 @@ export async function restoreUserWithAssociated(
   if (restoreAssociated) {
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
-    // Restore Posts của user
     await Post.updateMany(
       { ownerId: userObjectId, isDeleted: true },
       { $set: { isDeleted: false }, $unset: { deletedAt: '', deletedBy: '' } }
     );
 
-    // Restore Reviews đã viết
     await Review.updateMany(
       { reviewerId: userObjectId, isDeleted: true },
       { $set: { isDeleted: false }, $unset: { deletedAt: '', deletedBy: '' } }
     );
 
-    // Restore Conversations
     const conversations = await Conversation.find({
       participants: userObjectId,
       isDeleted: true,
@@ -737,7 +718,6 @@ export async function restoreUserWithAssociated(
       );
     }
 
-    // Restore Vouchers (nếu là Store)
     if (user.role === 'STORE') {
       await Voucher.updateMany(
         { creatorId: userObjectId, isDeleted: true },
@@ -798,6 +778,12 @@ export interface UserTrashResult {
   };
 }
 
+function resolveUserTrashModel(col: UserTrashCollection): AnyModel {
+  if (col === 'posts') return Post as unknown as AnyModel;
+  if (col === 'reviews') return Review as unknown as AnyModel;
+  return Voucher as unknown as AnyModel;
+}
+
 export async function getMyTrashItems(
   ownerId: string,
   collection: UserTrashCollection | undefined,
@@ -823,19 +809,15 @@ export async function getMyTrashItems(
         [ownerField]: new mongoose.Types.ObjectId(ownerId),
       };
 
-      let Model: typeof Post | typeof Review | typeof Voucher;
-      if (col === 'posts') Model = Post;
-      else if (col === 'reviews') Model = Review;
-      else Model = Voucher;
+      const Model = resolveUserTrashModel(col);
 
       const [rawData, total] = await Promise.all([
-        (Model as any)
-          .find(filter)
+        Model.find(filter)
           .sort({ deletedAt: -1 })
           .skip(skip)
           .limit(clampedLimit)
           .lean(),
-        (Model as any).countDocuments(filter),
+        Model.countDocuments(filter),
       ]);
 
       return {
@@ -864,12 +846,9 @@ export async function restoreItemByOwner(
   }
 
   const ownerField = USER_OWNER_FIELD[collection];
-  let Model: typeof Post | typeof Review | typeof Voucher;
-  if (collection === 'posts') Model = Post;
-  else if (collection === 'reviews') Model = Review;
-  else Model = Voucher;
+  const Model = resolveUserTrashModel(collection);
 
-  const item = await (Model as any).findOne({
+  const item = await Model.findOne({
     _id: itemId,
     isDeleted: true,
     [ownerField]: new mongoose.Types.ObjectId(ownerId),
@@ -882,7 +861,7 @@ export async function restoreItemByOwner(
     );
   }
 
-  await (Model as any).updateOne(
+  await Model.updateOne(
     { _id: itemId },
     { $set: { isDeleted: false }, $unset: { deletedAt: '', deletedBy: '' } }
   );
@@ -902,12 +881,9 @@ export async function purgeItemByOwner(
   }
 
   const ownerField = USER_OWNER_FIELD[collection];
-  let Model: typeof Post | typeof Review | typeof Voucher;
-  if (collection === 'posts') Model = Post;
-  else if (collection === 'reviews') Model = Review;
-  else Model = Voucher;
+  const Model = resolveUserTrashModel(collection);
 
-  const item = await (Model as any).findOne({
+  const item = await Model.findOne({
     _id: itemId,
     isDeleted: true,
     [ownerField]: new mongoose.Types.ObjectId(ownerId),
@@ -920,11 +896,14 @@ export async function purgeItemByOwner(
     );
   }
 
-  if (collection === 'posts' && item.images?.length > 0) {
-    deleteMultipleImagesByUrl(item.images).catch(() => {});
+  if (collection === 'posts') {
+    const images = item.images as string[] | undefined;
+    if (images && images.length > 0) {
+      deleteMultipleImagesByUrl(images).catch(() => {});
+    }
   }
 
-  await (Model as any).deleteOne({ _id: itemId });
+  await Model.deleteOne({ _id: itemId });
 
   logger.info(`[UserTrash] Purged ${collection}/${itemId} by owner ${ownerId}`);
 }

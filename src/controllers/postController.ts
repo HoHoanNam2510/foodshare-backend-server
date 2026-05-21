@@ -1,9 +1,6 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import Post, { IPost } from '@/models/Post';
-import PostCreationPasscode from '@/models/PostCreationPasscode';
-import Transaction from '@/models/Transaction';
-import User from '@/models/User';
+
 import { deleteMultipleImagesByUrl } from '@/services/uploadService';
 import { softDeletePost, SoftDeleteError } from '@/services/softDeleteService';
 import { sendPostPasscodeEmail } from '@/utils/postPasscodeEmail';
@@ -13,31 +10,34 @@ import {
   getAdminPostList,
   getHomePostsFeed,
   expireOldPosts,
+  getUserPostEligibility,
+  checkPasscodeRateLimit,
+  createPostPasscode,
+  validatePostPasscode,
+  markPasscodeUsed,
+  getPostsByOwner,
+  getPostById,
+  getAvailablePosts,
+  searchPostsNear,
+  checkActiveTransactions,
+  getUserBankAccount,
+  createPostRecord,
+  updatePostRecord,
+  getPostForOwner,
+  adminUpdatePostRecord,
+  adminToggleHidePost as toggleHidePostService,
+  PostServiceError,
+  POST_PASSCODE_EXPIRE_MINUTES_EXPORT as POST_PASSCODE_EXPIRE_MINUTES,
 } from '@/services/postService';
 import { checkAndAwardBadges } from '@/services/badgeService';
+import { IPost } from '@/models/Post';
 
-const POST_PASSCODE_LENGTH = 6;
-const POST_PASSCODE_EXPIRE_MINUTES = 10;
-const MAX_PASSCODE_SEND_PER_MINUTE = 3;
-
-// Trường nhạy cảm — nếu user sửa thì phải gửi lại cho AI duyệt
 const SENSITIVE_FIELDS = ['title', 'description', 'images'];
 
-function generateNumericPasscode(length: number): string {
-  let passcode = '';
-
-  for (let i = 0; i < length; i += 1) {
-    passcode += Math.floor(Math.random() * 10).toString();
-  }
-
-  return passcode;
-}
-
 // =============================================
-// I. NHÓM HANDLER DÀNH CHO USER / STORE
+// I. USER / STORE
 // =============================================
 
-// --- Gửi mã OTP xác thực tạo bài ---
 export const sendCreatePostPasscode = async (
   req: Request,
   res: Response
@@ -53,20 +53,14 @@ export const sendCreatePostPasscode = async (
       return;
     }
 
-    const user = await User.findById(ownerId).select(
-      'email authProvider isEmailVerified role kycStatus'
-    );
-
+    const user = await getUserPostEligibility(ownerId);
     if (!user) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy người dùng',
-      });
+      res
+        .status(404)
+        .json({ success: false, message: 'Không tìm thấy người dùng' });
       return;
     }
 
-    // Email phải được xác minh trước khi gửi passcode tạo bài.
-    // Tài khoản GOOGLE luôn được coi là đã xác minh (Google đảm bảo điều này).
     if (!user.isEmailVerified && user.authProvider !== 'GOOGLE') {
       res.status(403).json({
         success: false,
@@ -76,7 +70,6 @@ export const sendCreatePostPasscode = async (
       return;
     }
 
-    // Store phải được duyệt KYC trước khi đăng bài
     if (user.role === 'STORE' && user.kycStatus !== 'VERIFIED') {
       res.status(403).json({
         success: false,
@@ -86,44 +79,10 @@ export const sendCreatePostPasscode = async (
       return;
     }
 
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-    const recentPasscodeCount = await PostCreationPasscode.countDocuments({
-      userId: ownerId,
-      createdAt: { $gte: oneMinuteAgo },
-    });
+    await checkPasscodeRateLimit(ownerId);
 
-    if (recentPasscodeCount >= MAX_PASSCODE_SEND_PER_MINUTE) {
-      res.status(429).json({
-        success: false,
-        message:
-          'Bạn đã gửi passcode quá nhiều lần. Vui lòng thử lại sau khoảng 1 phút',
-      });
-      return;
-    }
+    const { passcode } = await createPostPasscode(ownerId);
 
-    const passcode = generateNumericPasscode(POST_PASSCODE_LENGTH);
-    const expiresAt = new Date(
-      Date.now() + POST_PASSCODE_EXPIRE_MINUTES * 60 * 1000
-    );
-
-    // Vô hiệu các passcode cũ chưa dùng để chỉ giữ 1 mã hợp lệ gần nhất.
-    await PostCreationPasscode.updateMany(
-      {
-        userId: ownerId,
-        usedAt: null,
-      },
-      {
-        $set: { usedAt: new Date() },
-      }
-    );
-
-    const passcodeDoc = await PostCreationPasscode.create({
-      userId: ownerId,
-      code: passcode,
-      expiresAt,
-    });
-
-    // Gửi email non-blocking — response trả về ngay sau khi lưu DB
     sendPostPasscodeEmail({
       email: user.email,
       passcode,
@@ -144,11 +103,14 @@ export const sendCreatePostPasscode = async (
       },
     });
   } catch (error: unknown) {
-    console.error('sendCreatePostPasscode error:', error);
-
+    if (error instanceof PostServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
     const errorMessage =
       error instanceof Error ? error.message : 'Không thể gửi passcode';
-
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi gửi passcode',
@@ -157,13 +119,11 @@ export const sendCreatePostPasscode = async (
   }
 };
 
-// --- PST_F02: TẠO BÀI ĐĂNG (Create Post) ---
 export const createPost = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   const ownerId = req.user?.id;
-  let newPostId: string | null = null;
 
   try {
     const {
@@ -189,7 +149,6 @@ export const createPost = async (
       return;
     }
 
-    // 1. Validate cơ bản (location không bắt buộc — map service chưa tích hợp)
     if (
       !title ||
       !images ||
@@ -205,26 +164,8 @@ export const createPost = async (
       return;
     }
 
-    if (
-      typeof passcode !== 'string' ||
-      !new RegExp(`^\\d{${POST_PASSCODE_LENGTH}}$`).test(passcode)
-    ) {
-      res.status(400).json({
-        success: false,
-        message: `Passcode phải gồm đúng ${POST_PASSCODE_LENGTH} chữ số`,
-      });
-      return;
-    }
-
-    const now = new Date();
-    const passcodeRecord = await PostCreationPasscode.findOne({
-      userId: ownerId,
-      code: passcode,
-      usedAt: null,
-      expiresAt: { $gt: now },
-    }).sort({ createdAt: -1 });
-
-    if (!passcodeRecord) {
+    const { valid, passcodeId } = await validatePostPasscode(ownerId, passcode);
+    if (!valid || !passcodeId) {
       res.status(400).json({
         success: false,
         message: 'Passcode không hợp lệ hoặc đã hết hạn',
@@ -232,11 +173,8 @@ export const createPost = async (
       return;
     }
 
-    // 2. B2C bắt buộc phải có tài khoản ngân hàng để nhận giải ngân
     if (type === 'B2C_MYSTERY_BAG') {
-      const owner = await User.findById(ownerId).select('paymentInfo role');
-      const bankAccountNumber = owner?.paymentInfo?.bankAccountNumber;
-
+      const bankAccountNumber = await getUserBankAccount(ownerId);
       if (!bankAccountNumber) {
         res.status(400).json({
           success: false,
@@ -247,7 +185,6 @@ export const createPost = async (
       }
     }
 
-    // 3. Tạo bài đăng mới — status mặc định là PENDING_REVIEW
     const postData: Record<string, unknown> = {
       ownerId,
       type,
@@ -263,24 +200,31 @@ export const createPost = async (
       status: 'PENDING_REVIEW',
       publishAt,
     };
+    if (location) postData.location = location;
 
-    // Location là optional — chỉ thêm nếu client gửi lên
-    if (location) {
-      postData.location = location;
-    }
+    const newPost = await createPostRecord(postData);
+    const newPostId = String(newPost._id);
 
-    const newPost = await Post.create(postData);
-    newPostId = String(newPost._id);
+    await markPasscodeUsed(passcodeId);
 
-    // 4. Đánh dấu passcode đã sử dụng
-    passcodeRecord.usedAt = now;
-    await passcodeRecord.save();
-
-    // 5. Trả về ngay cho Frontend — không chờ AI
     res.status(201).json({
       success: true,
       message: 'Tạo bài đăng thành công',
       data: newPost,
+    });
+
+    if (ownerId) {
+      checkAndAwardBadges(ownerId, 'POST_CREATED').catch((err: unknown) => {
+        logger.warn('[createPost] badge check (POST_CREATED) failed', {
+          error: err,
+        });
+      });
+    }
+
+    runAIModerationJob(newPostId, 'ON_CREATE').catch((err: unknown) => {
+      logger.error('[createPost] Background AI moderation failed', {
+        error: err,
+      });
     });
   } catch (error: unknown) {
     logger.error('[createPost] Error creating post', {
@@ -304,45 +248,22 @@ export const createPost = async (
     }
 
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
     return;
-  }
-
-  // 6 & 7. Fire-and-forget AFTER response — nằm ngoài try/catch để tránh
-  // outer catch chạy sau khi response đã gửi
-  if (ownerId) {
-    checkAndAwardBadges(ownerId, 'POST_CREATED').catch((err: unknown) => {
-      logger.warn('[createPost] badge check (POST_CREATED) failed', {
-        error: err,
-      });
-    });
-  }
-
-  if (newPostId) {
-    runAIModerationJob(newPostId, 'ON_CREATE').catch((err: unknown) => {
-      logger.error('[createPost] Background AI moderation failed', {
-        error: err,
-      });
-    });
   }
 };
 
-// --- PST_F01: XEM DANH SÁCH BÀI ĐĂNG CỦA TÔI (Get My Posts) ---
 export const getMyPosts = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const ownerId = req.user?.id;
-
-    const posts = await Post.find({ ownerId }).sort({ createdAt: -1 });
-
+    const ownerId = req.user?.id as string;
+    const posts = await getPostsByOwner(ownerId);
     res.status(200).json({
       success: true,
       message: 'Lấy danh sách bài đăng thành công',
@@ -350,29 +271,24 @@ export const getMyPosts = async (
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
-// --- PST_F03: SỬA THÔNG TIN BÀI ĐĂNG (Update Post) ---
 export const updatePost = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const postId = req.params.id;
-    const ownerId = req.user?.id;
-
-    // req.body đã được validateBody(updatePostSchema) lọc và validate trước đó
+    const postId = String(req.params.id);
+    const ownerId = req.user?.id as string;
     const updates = req.body;
 
-    const post = await Post.findOne({ _id: postId, ownerId });
+    const post = await getPostForOwner(postId, ownerId);
     if (!post) {
       res.status(404).json({
         success: false,
@@ -381,33 +297,19 @@ export const updatePost = async (
       return;
     }
 
-    // Chặn sửa trường nhạy cảm về số lượng/giá nếu có giao dịch đang hoạt động
-    const QUANTITY_PRICE_FIELDS = [
-      'totalQuantity',
-      'remainingQuantity',
-      'price',
-    ];
-    const hasQuantityOrPriceChange = QUANTITY_PRICE_FIELDS.some(
-      (field) => field in updates
+    const hasActiveTransactions = await checkActiveTransactions(
+      String(post._id),
+      Object.keys(updates)
     );
-
-    if (hasQuantityOrPriceChange) {
-      const activeTransactionCount = await Transaction.countDocuments({
-        postId: post._id,
-        status: { $in: ['PENDING', 'ACCEPTED', 'ESCROWED', 'DISPUTED'] },
+    if (hasActiveTransactions) {
+      res.status(400).json({
+        success: false,
+        message:
+          'Không thể sửa số lượng hoặc giá khi bài đăng còn giao dịch đang xử lý. Vui lòng chờ các giao dịch hoàn tất hoặc hủy trước.',
       });
-
-      if (activeTransactionCount > 0) {
-        res.status(400).json({
-          success: false,
-          message:
-            'Không thể sửa số lượng hoặc giá khi bài đăng còn giao dịch đang xử lý. Vui lòng chờ các giao dịch hoàn tất hoặc hủy trước.',
-        });
-        return;
-      }
+      return;
     }
 
-    // Xóa ảnh cũ trên Cloudinary nếu images bị thay đổi
     if (updates.images && Array.isArray(updates.images)) {
       const removedUrls = post.images.filter(
         (oldUrl: string) => !updates.images.includes(oldUrl)
@@ -417,20 +319,12 @@ export const updatePost = async (
       }
     }
 
-    // Kiểm tra xem có sửa trường nhạy cảm không → cần duyệt lại
     const hasSensitiveChange = SENSITIVE_FIELDS.some(
       (field) => field in updates
     );
+    if (hasSensitiveChange) updates.status = 'PENDING_REVIEW';
 
-    if (hasSensitiveChange) {
-      updates.status = 'PENDING_REVIEW';
-    }
-
-    const updatedPost = await Post.findByIdAndUpdate(
-      postId,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
+    const updatedPost = await updatePostRecord(postId, updates);
 
     res.status(200).json({
       success: true,
@@ -438,25 +332,21 @@ export const updatePost = async (
       data: updatedPost,
     });
 
-    // Nếu sửa trường nhạy cảm, kích hoạt lại AI moderation
     if (hasSensitiveChange && updatedPost) {
       runAIModerationJob(String(updatedPost._id), 'ON_UPDATE').catch((err) => {
-        console.error('Background AI re-moderation failed:', err);
+        logger.error('Background AI re-moderation failed:', err);
       });
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
-// --- PST_F04: XÓA BÀI ĐĂNG (Soft Delete Post) ---
 export const deletePost = async (
   req: Request,
   res: Response
@@ -473,7 +363,6 @@ export const deletePost = async (
     }
 
     await softDeletePost(postId, ownerId, ownerId);
-
     res.status(200).json({
       success: true,
       message: 'Bài đăng đã được chuyển vào thùng rác',
@@ -486,21 +375,18 @@ export const deletePost = async (
       return;
     }
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
 // =============================================
-// II. NHÓM HANDLER PUBLIC / TÌM KIẾM BẢN ĐỒ
+// II. PUBLIC / MAP
 // =============================================
 
-// --- EXPLORE: Lấy danh sách bài đăng AVAILABLE cho màn hình Explore ---
 export const getExplorePosts = async (
   req: Request,
   res: Response
@@ -508,7 +394,6 @@ export const getExplorePosts = async (
   try {
     const { type, sort } = req.query;
 
-    // Cập nhật bài quá hạn về HIDDEN trước khi query — fire-and-forget
     expireOldPosts().catch((err) =>
       logger.error('[getExplorePosts] expireOldPosts failed', { error: err })
     );
@@ -518,23 +403,12 @@ export const getExplorePosts = async (
       status: 'AVAILABLE',
       expiryDate: { $gt: now },
     };
+    if (type && typeof type === 'string') filter.type = type;
 
-    if (type && typeof type === 'string') {
-      filter.type = type;
-    }
-
-    // Mặc định sắp xếp mới nhất; 'expiring' → hạn sử dụng sớm nhất
     let sortOption: Record<string, 1 | -1> = { createdAt: -1 };
-    if (sort === 'expiring') {
-      sortOption = { expiryDate: 1 };
-    }
-    // 'closest' cần GPS → xử lý client-side, server vẫn trả newest
+    if (sort === 'expiring') sortOption = { expiryDate: 1 };
 
-    const posts = await Post.find(filter)
-      .populate('ownerId', 'fullName avatar averageRating')
-      .sort(sortOption)
-      .limit(100);
-
+    const posts = await getAvailablePosts(filter, sortOption);
     res.status(200).json({
       success: true,
       message: 'Lấy danh sách bài đăng thành công',
@@ -542,17 +416,14 @@ export const getExplorePosts = async (
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
-// --- Xem chi tiết 1 bài đăng (getPostDetail) ---
 export const getPostDetail = async (
   req: Request,
   res: Response
@@ -561,39 +432,19 @@ export const getPostDetail = async (
     const postId = String(req.params.id);
 
     if (!mongoose.Types.ObjectId.isValid(postId)) {
-      res.status(400).json({
-        success: false,
-        message: 'ID bài đăng không hợp lệ',
-      });
+      res
+        .status(400)
+        .json({ success: false, message: 'ID bài đăng không hợp lệ' });
       return;
     }
 
-    const post = await Post.findById(postId).populate(
-      'ownerId',
-      'fullName avatar averageRating role'
-    );
+    const currentUserId = req.user?.id;
+    const post = await getPostById(postId, currentUserId);
 
     if (!post) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy bài đăng',
-      });
-      return;
-    }
-
-    // Chặn xem nếu bài đăng ở trạng thái không công khai
-    // Trừ khi người gọi API chính là ownerId
-    const restrictedStatuses = ['HIDDEN', 'REJECTED', 'PENDING_REVIEW'];
-    const currentUserId = req.user?.id;
-    const isOwner =
-      currentUserId &&
-      String(post.ownerId._id || post.ownerId) === currentUserId;
-
-    if (restrictedStatuses.includes(post.status) && !isOwner) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy bài đăng',
-      });
+      res
+        .status(404)
+        .json({ success: false, message: 'Không tìm thấy bài đăng' });
       return;
     }
 
@@ -604,17 +455,14 @@ export const getPostDetail = async (
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
-// --- PST_F05, MAP_F01-F03: TÌM BÀI ĐĂNG TRÊN BẢN ĐỒ (searchMapPosts) ---
 export const searchMapPosts = async (
   req: Request,
   res: Response
@@ -639,13 +487,11 @@ export const searchMapPosts = async (
       return;
     }
 
-    // Cập nhật bài quá hạn về HIDDEN trước khi query — fire-and-forget
     expireOldPosts().catch((err) =>
       logger.error('[searchMapPosts] expireOldPosts failed', { error: err })
     );
 
     const now = new Date();
-    // Chỉ hiển thị bài đăng AVAILABLE chưa hết hạn trên bản đồ
     const filter: Record<string, unknown> = {
       status: 'AVAILABLE',
       expiryDate: { $gt: now },
@@ -660,23 +506,13 @@ export const searchMapPosts = async (
       },
     };
 
-    // Lọc theo loại bài đăng nếu có (P2P_FREE / B2C_MYSTERY_BAG)
-    if (type && typeof type === 'string') {
-      filter.type = type;
-    }
+    if (type && typeof type === 'string') filter.type = type;
 
-    // Xác định thứ tự sắp xếp
     let sortOption: Record<string, 1 | -1> = {};
-    if (sort === 'newest') {
-      sortOption = { createdAt: -1 };
-    } else if (sort === 'expiring') {
-      sortOption = { expiryDate: 1 };
-    }
+    if (sort === 'newest') sortOption = { createdAt: -1 };
+    else if (sort === 'expiring') sortOption = { expiryDate: 1 };
 
-    const posts = await Post.find(filter)
-      .populate('ownerId', 'fullName avatar averageRating role')
-      .sort(sortOption);
-
+    const posts = await searchPostsNear(filter, sortOption);
     res.status(200).json({
       success: true,
       message: 'Lấy bài đăng xung quanh thành công',
@@ -684,21 +520,18 @@ export const searchMapPosts = async (
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
 // =============================================
-// II-B. NHÓM HANDLER HOME SCREEN
+// II-B. HOME SCREEN
 // =============================================
 
-// GET /api/posts/home/freshly-shared?categorySlug=&lng=&lat=&limit=6
 export const getFreshlyShared = async (
   req: Request,
   res: Response
@@ -718,17 +551,14 @@ export const getFreshlyShared = async (
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
-// GET /api/posts/home/market-teaser?categorySlug=&lng=&lat=&limit=6
 export const getMarketTeaser = async (
   req: Request,
   res: Response
@@ -748,21 +578,18 @@ export const getMarketTeaser = async (
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
 // =============================================
-// III. NHÓM HANDLER DÀNH CHO ADMIN
+// III. ADMIN
 // =============================================
 
-// --- ADM_P01: Lấy danh sách bài đăng (Admin) ---
 export const adminGetPosts = async (
   req: Request,
   res: Response
@@ -791,17 +618,14 @@ export const adminGetPosts = async (
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
-// --- ADM_P02: Admin sửa bài đăng (bao gồm thay đổi status) ---
 export const adminUpdatePost = async (
   req: Request,
   res: Response
@@ -811,24 +635,18 @@ export const adminUpdatePost = async (
     const updates = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(postId)) {
-      res.status(400).json({
-        success: false,
-        message: 'ID bài đăng không hợp lệ',
-      });
+      res
+        .status(400)
+        .json({ success: false, message: 'ID bài đăng không hợp lệ' });
       return;
     }
 
-    const updatedPost = await Post.findByIdAndUpdate(
-      postId,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
+    const updatedPost = await adminUpdatePostRecord(postId, updates);
 
     if (!updatedPost) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy bài đăng',
-      });
+      res
+        .status(404)
+        .json({ success: false, message: 'Không tìm thấy bài đăng' });
       return;
     }
 
@@ -839,17 +657,14 @@ export const adminUpdatePost = async (
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };
 
-// --- ADM_P03: Admin ẩn bài đăng vi phạm ---
 export const adminToggleHidePost = async (
   req: Request,
   res: Response
@@ -858,74 +673,35 @@ export const adminToggleHidePost = async (
     const postId = String(req.params.id);
 
     if (!mongoose.Types.ObjectId.isValid(postId)) {
-      res.status(400).json({
+      res
+        .status(400)
+        .json({ success: false, message: 'ID bài đăng không hợp lệ' });
+      return;
+    }
+
+    const result = await toggleHidePostService(postId);
+
+    if (!result.ok) {
+      res.status(result.statusCode).json({
         success: false,
-        message: 'ID bài đăng không hợp lệ',
+        message: result.message,
+        ...(result.errorCode && { errorCode: result.errorCode }),
       });
       return;
     }
 
-    const post = await Post.findById(postId);
+    const message =
+      result.newStatus === 'AVAILABLE'
+        ? 'Đã hiển thị lại bài đăng thành công'
+        : 'Đã ẩn bài đăng thành công';
 
-    if (!post) {
-      res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy bài đăng',
-      });
-      return;
-    }
-
-    if (post.status === 'HIDDEN') {
-      if (post.expiryDate && post.expiryDate < new Date()) {
-        res.status(400).json({
-          success: false,
-          message: 'Không thể hiển thị bài đăng đã hết hạn sử dụng',
-          errorCode: 'POST_EXPIRED',
-        });
-        return;
-      }
-      if (post.remainingQuantity <= 0) {
-        res.status(400).json({
-          success: false,
-          message:
-            'Không thể hiển thị bài đăng đã hết hàng. Hãy cập nhật số lượng trước.',
-          errorCode: 'POST_OUT_OF_STOCK',
-        });
-        return;
-      }
-      post.status = 'AVAILABLE';
-      await post.save();
-      res.status(200).json({
-        success: true,
-        message: 'Đã hiển thị lại bài đăng thành công',
-        data: post,
-      });
-    } else {
-      const hideableStatuses = ['AVAILABLE', 'PENDING_REVIEW'];
-      if (!hideableStatuses.includes(post.status)) {
-        res.status(400).json({
-          success: false,
-          message: `Không thể ẩn bài đăng ở trạng thái "${post.status}". Chỉ ẩn được bài đang hiển thị hoặc chờ duyệt.`,
-          errorCode: 'INVALID_POST_STATUS',
-        });
-        return;
-      }
-      post.status = 'HIDDEN';
-      await post.save();
-      res.status(200).json({
-        success: true,
-        message: 'Đã ẩn bài đăng thành công',
-        data: post,
-      });
-    }
+    res.status(200).json({ success: true, message, data: result.post });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: 'Lỗi server',
-        ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
   }
 };

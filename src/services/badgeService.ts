@@ -8,6 +8,7 @@ import Transaction from '@/models/Transaction';
 import Review from '@/models/Review';
 import PointLog from '@/models/PointLog';
 import { createNotification } from '@/services/notificationService';
+import logger from '@/utils/logger';
 
 // Ngày ra mắt ứng dụng — EARLY_BIRD chỉ trao cho user đăng ký trước mốc này
 const LAUNCH_CUTOFF = new Date('2026-07-01T00:00:00.000Z');
@@ -184,8 +185,6 @@ async function evaluateBadgeCondition(
  * Internal: Trao huy hiệu cho user — tạo UserBadge + cộng điểm + thông báo.
  */
 async function awardBadge(userId: string, badge: IBadge): Promise<void> {
-  const badgeId = (badge._id as mongoose.Types.ObjectId).toString();
-
   // Tạo UserBadge (unique index đảm bảo không duplicate)
   await UserBadge.create({ userId, badgeId: badge._id });
 
@@ -260,7 +259,7 @@ export async function checkAndAwardBadges(
       }
     }
   } catch (err) {
-    console.warn('[BadgeService] checkAndAwardBadges failed silently:', err);
+    logger.warn('[BadgeService] checkAndAwardBadges failed silently:', err);
   }
 }
 

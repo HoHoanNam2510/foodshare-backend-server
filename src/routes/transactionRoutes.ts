@@ -17,16 +17,34 @@ import {
   devCompleteTransaction,
 } from '@/controllers/transactionController';
 import { verifyAuth, verifyAdmin } from '@/middlewares/authMiddleware';
+import { validateBody } from '@/middlewares/validateBodyMiddleware';
+import {
+  createTransactionSchema,
+  updateOrCancelRequestSchema,
+  respondToRequestSchema,
+  scanQrSchema,
+  adminForceStatusSchema,
+} from '@/validations/transactionValidation';
 
 const router = Router();
 
 // ===== NHÓM USER (Người Xin Đồ / Người Mua) =====
 
 // [POST] /api/transactions/requests
-router.post('/requests', verifyAuth, createRequest);
+router.post(
+  '/requests',
+  verifyAuth,
+  validateBody(createTransactionSchema),
+  createRequest
+);
 
 // [PUT] /api/transactions/requests/:id
-router.put('/requests/:id', verifyAuth, updateOrDeleteRequest);
+router.put(
+  '/requests/:id',
+  verifyAuth,
+  validateBody(updateOrCancelRequestSchema),
+  updateOrDeleteRequest
+);
 
 // [GET] /api/transactions/me
 router.get('/me', verifyAuth, getMyTransactions);
@@ -35,7 +53,12 @@ router.get('/me', verifyAuth, getMyTransactions);
 router.get('/as-owner', verifyAuth, getMyTransactionsAsOwner);
 
 // [POST] /api/transactions/orders
-router.post('/orders', verifyAuth, createOrder);
+router.post(
+  '/orders',
+  verifyAuth,
+  validateBody(createTransactionSchema),
+  createOrder
+);
 
 // ===== NHÓM STORE / DONOR (Chủ Bài Đăng) =====
 
@@ -45,7 +68,12 @@ router.get('/posts/:postId', verifyAuth, getPostTransactions);
 
 // [PATCH] /api/transactions/:id/respond
 // (P2P & B2C: chủ post/store accept/reject — B2C sinh VietQR khi ACCEPT)
-router.patch('/:id/respond', verifyAuth, respondToRequest);
+router.patch(
+  '/:id/respond',
+  verifyAuth,
+  validateBody(respondToRequestSchema),
+  respondToRequest
+);
 
 // [PATCH] /api/transactions/:id/cancel
 // (Store hủy đơn B2C đang ACCEPTED)
@@ -57,7 +85,7 @@ router.patch('/:id/confirm-receipt', verifyAuth, confirmReceiptByStore);
 
 // [POST] /api/transactions/scan
 // (P2P: Buyer quét QR từ người cho để hoàn tất)
-router.post('/scan', verifyAuth, scanQrAndComplete);
+router.post('/scan', verifyAuth, validateBody(scanQrSchema), scanQrAndComplete);
 
 // ===== NHÓM ADMIN =====
 
@@ -69,16 +97,12 @@ router.patch(
   '/admin/:id/status',
   verifyAuth,
   verifyAdmin,
+  validateBody(adminForceStatusSchema),
   adminForceUpdateStatus
 );
 
 // [GET] /api/transactions/admin/status-logs
-router.get(
-  '/admin/status-logs',
-  verifyAuth,
-  verifyAdmin,
-  adminGetStatusLogs
-);
+router.get('/admin/status-logs', verifyAuth, verifyAdmin, adminGetStatusLogs);
 
 // ===== DEV ONLY =====
 
