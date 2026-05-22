@@ -1,6 +1,13 @@
 import cloudinary from '@/config/cloudinary';
 
-type UploadFolder = 'avatars' | 'posts' | 'kyc' | 'reports' | 'chat' | 'badges';
+type UploadFolder =
+  | 'avatars'
+  | 'posts'
+  | 'kyc'
+  | 'reports'
+  | 'chat'
+  | 'badges'
+  | 'feedbacks';
 
 interface UploadResult {
   url: string;

@@ -32,6 +32,7 @@ import translateRoutes from './routes/translateRoutes';
 import statisticsRoutes from './routes/statisticsRoutes';
 import trashRoutes from './routes/trashRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import feedbackRoutes from './routes/feedbackRoutes';
 import categoryRoutes from './routes/categoryRoutes';
 import postTemplateRoutes from './routes/postTemplateRoutes';
 import { seedCategories } from './seeds/categorySeeder';
@@ -97,6 +98,7 @@ app.use('/api/admin/trash', trashRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/post-templates', postTemplateRoutes);
+app.use('/api/feedbacks', feedbackRoutes);
 
 // Global error handler — log mọi lỗi chưa bắt
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

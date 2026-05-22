@@ -9,7 +9,12 @@ import NotificationBroadcast, {
 } from '@/models/NotificationBroadcast';
 import logger from '@/utils/logger';
 
-type NotificationType = 'TRANSACTION' | 'RADAR' | 'SYSTEM' | 'VOUCHER';
+type NotificationType =
+  | 'TRANSACTION'
+  | 'RADAR'
+  | 'SYSTEM'
+  | 'VOUCHER'
+  | 'FEEDBACK';
 type BroadcastTargetRole = 'ALL' | 'USER' | 'STORE' | 'ADMIN';
 
 let io: Server | null = null;
