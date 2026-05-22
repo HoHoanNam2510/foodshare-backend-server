@@ -8,6 +8,7 @@ import {
   getVoucherMarket,
   redeemVoucher,
   getMyVouchers,
+  getApplicableVouchersForPost,
   adminGetVouchers,
   adminToggleVoucher,
 } from '@/controllers/voucherController';
@@ -43,6 +44,10 @@ router.get('/market', getVoucherMarket);
 // [GET] /api/vouchers/me
 // (Xem Voucher trong ví của tôi)
 router.get('/me', verifyAuth, getMyVouchers);
+
+// [GET] /api/vouchers/applicable-for-post?postId=:postId
+// (Lấy voucher có thể áp dụng cho 1 bài đăng B2C)
+router.get('/applicable-for-post', verifyAuth, getApplicableVouchersForPost);
 
 // [POST] /api/vouchers/:id/redeem
 // (Đổi điểm lấy Voucher)

@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IUserVoucher extends Document {
   userId: mongoose.Types.ObjectId;
   voucherId: mongoose.Types.ObjectId;
-  status: 'UNUSED' | 'USED' | 'EXPIRED';
+  status: 'UNUSED' | 'LOCKED' | 'USED' | 'EXPIRED';
   usedAt?: Date;
   transactionId?: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -24,7 +24,7 @@ const UserVoucherSchema = new Schema<IUserVoucher>(
     },
     status: {
       type: String,
-      enum: ['UNUSED', 'USED', 'EXPIRED'],
+      enum: ['UNUSED', 'LOCKED', 'USED', 'EXPIRED'],
       default: 'UNUSED',
     },
     usedAt: { type: Date },

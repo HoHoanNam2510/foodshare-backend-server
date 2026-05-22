@@ -15,6 +15,12 @@ export interface ITransaction extends Document {
     bankAccountNumber: string;
     bankAccountName: string;
   };
+  voucherSnapshot?: {
+    userVoucherId: mongoose.Types.ObjectId;
+    discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+    discountValue: number;
+    discountAmount: number;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,6 +73,13 @@ const TransactionSchema = new Schema<ITransaction>(
       bankName: { type: String },
       bankAccountNumber: { type: String },
       bankAccountName: { type: String },
+    },
+
+    voucherSnapshot: {
+      userVoucherId: { type: Schema.Types.ObjectId, ref: 'UserVoucher' },
+      discountType: { type: String, enum: ['PERCENTAGE', 'FIXED_AMOUNT'] },
+      discountValue: { type: Number },
+      discountAmount: { type: Number },
     },
   },
   { timestamps: true }

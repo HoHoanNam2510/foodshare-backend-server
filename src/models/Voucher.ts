@@ -6,7 +6,7 @@ export interface IVoucher extends Document, ISoftDelete {
   code: string;
   title: string;
   description?: string;
-  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT'; // Thêm trường này để phân biệt logic giảm giá
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
   discountValue: number;
   pointCost: number;
   totalQuantity: number;
@@ -14,6 +14,8 @@ export interface IVoucher extends Document, ISoftDelete {
   validFrom: Date;
   validUntil: Date;
   isActive: boolean;
+  applicableType: 'ALL' | 'SPECIFIC';
+  applicablePostIds: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +60,16 @@ const VoucherSchema = new Schema<IVoucher>(
     validFrom: { type: Date, required: true },
     validUntil: { type: Date, required: true },
     isActive: { type: Boolean, default: true },
+
+    applicableType: {
+      type: String,
+      enum: ['ALL', 'SPECIFIC'],
+      required: true,
+      default: 'ALL',
+    },
+    applicablePostIds: [
+      { type: Schema.Types.ObjectId, ref: 'Post', default: [] },
+    ],
   },
   { timestamps: true }
 );

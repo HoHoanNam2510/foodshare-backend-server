@@ -4,34 +4,44 @@ import { z } from 'zod';
 // I. VALIDATION CHO STORE
 // =============================================
 
-export const createVoucherSchema = z.object({
-  code: z
-    .string()
-    .min(3, 'Mã voucher tối thiểu 3 ký tự')
-    .max(30, 'Mã voucher tối đa 30 ký tự'),
-  title: z
-    .string()
-    .min(3, 'Tiêu đề tối thiểu 3 ký tự')
-    .max(200, 'Tiêu đề tối đa 200 ký tự'),
-  description: z.string().max(1000, 'Mô tả tối đa 1000 ký tự').optional(),
-  discountType: z.enum(['PERCENTAGE', 'FIXED_AMOUNT'], {
-    errorMap: () => ({
-      message: 'discountType phải là PERCENTAGE hoặc FIXED_AMOUNT',
+export const createVoucherSchema = z
+  .object({
+    code: z
+      .string()
+      .min(3, 'Mã voucher tối thiểu 3 ký tự')
+      .max(30, 'Mã voucher tối đa 30 ký tự'),
+    title: z
+      .string()
+      .min(3, 'Tiêu đề tối thiểu 3 ký tự')
+      .max(200, 'Tiêu đề tối đa 200 ký tự'),
+    description: z.string().max(1000, 'Mô tả tối đa 1000 ký tự').optional(),
+    discountType: z.enum(['PERCENTAGE', 'FIXED_AMOUNT'], {
+      errorMap: () => ({
+        message: 'discountType phải là PERCENTAGE hoặc FIXED_AMOUNT',
+      }),
     }),
-  }),
-  discountValue: z.number().min(1, 'Giá trị giảm tối thiểu là 1'),
-  pointCost: z.number().min(0, 'Số điểm cần để đổi không được âm'),
-  totalQuantity: z
-    .number()
-    .int('Số lượng phải là số nguyên')
-    .min(1, 'Số lượng tối thiểu là 1'),
-  validFrom: z
-    .string()
-    .datetime('validFrom phải là chuỗi ngày hợp lệ (ISO 8601)'),
-  validUntil: z
-    .string()
-    .datetime('validUntil phải là chuỗi ngày hợp lệ (ISO 8601)'),
-});
+    discountValue: z.number().min(1, 'Giá trị giảm tối thiểu là 1'),
+    pointCost: z.number().min(0, 'Số điểm cần để đổi không được âm'),
+    totalQuantity: z
+      .number()
+      .int('Số lượng phải là số nguyên')
+      .min(1, 'Số lượng tối thiểu là 1'),
+    validFrom: z
+      .string()
+      .datetime('validFrom phải là chuỗi ngày hợp lệ (ISO 8601)'),
+    validUntil: z
+      .string()
+      .datetime('validUntil phải là chuỗi ngày hợp lệ (ISO 8601)'),
+    applicableType: z.enum(['ALL', 'SPECIFIC']).default('ALL'),
+    applicablePostIds: z
+      .array(z.string().length(24, 'Post ID phải đúng 24 ký tự'))
+      .optional()
+      .default([]),
+  })
+  .refine((d) => d.discountType !== 'PERCENTAGE' || d.discountValue <= 100, {
+    message: 'Giảm giá theo % không được vượt quá 100',
+    path: ['discountValue'],
+  });
 
 export type CreateVoucherBody = z.infer<typeof createVoucherSchema>;
 
@@ -64,6 +74,10 @@ export const updateVoucherSchema = z.object({
   validUntil: z
     .string()
     .datetime('validUntil phải là chuỗi ngày hợp lệ (ISO 8601)')
+    .optional(),
+  applicableType: z.enum(['ALL', 'SPECIFIC']).optional(),
+  applicablePostIds: z
+    .array(z.string().length(24, 'Post ID phải đúng 24 ký tự'))
     .optional(),
 });
 

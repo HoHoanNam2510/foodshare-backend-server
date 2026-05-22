@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import Voucher, { IVoucher } from '@/models/Voucher';
 import UserVoucher, { IUserVoucher } from '@/models/UserVoucher';
 import User from '@/models/User';
+import Post from '@/models/Post';
 import { deductPointsForVoucher } from '@/services/greenPointService';
 
 export class VoucherServiceError extends Error {
@@ -28,6 +29,38 @@ interface CreateVoucherInput {
   totalQuantity: number;
   validFrom: string;
   validUntil: string;
+  applicableType?: 'ALL' | 'SPECIFIC';
+  applicablePostIds?: string[];
+}
+
+async function validateApplicablePostIds(
+  postIds: string[],
+  creatorId: string
+): Promise<void> {
+  for (const postId of postIds) {
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      throw new VoucherServiceError(`Post ID "${postId}" không hợp lệ`, 400);
+    }
+    const post = await Post.findById(postId).select('ownerId status');
+    if (!post) {
+      throw new VoucherServiceError(
+        `Không tìm thấy bài đăng với ID "${postId}"`,
+        400
+      );
+    }
+    if (post.ownerId.toString() !== creatorId) {
+      throw new VoucherServiceError(
+        `Bài đăng "${postId}" không thuộc cửa hàng của bạn`,
+        400
+      );
+    }
+    if (post.status !== 'AVAILABLE') {
+      throw new VoucherServiceError(
+        `Bài đăng "${postId}" không ở trạng thái AVAILABLE`,
+        400
+      );
+    }
+  }
 }
 
 /**
@@ -47,12 +80,13 @@ export async function storeCreateVoucher(
     totalQuantity,
     validFrom,
     validUntil,
+    applicableType = 'ALL',
+    applicablePostIds = [],
   } = data;
 
   const fromDate = new Date(validFrom);
   const untilDate = new Date(validUntil);
 
-  // Validate: validUntil phải lớn hơn validFrom
   if (untilDate <= fromDate) {
     throw new VoucherServiceError(
       'Ngày hết hạn (validUntil) phải lớn hơn ngày bắt đầu (validFrom)',
@@ -60,13 +94,16 @@ export async function storeCreateVoucher(
     );
   }
 
-  // Kiểm tra code không bị trùng
   const existingVoucher = await Voucher.findOne({ code: code.toUpperCase() });
   if (existingVoucher) {
     throw new VoucherServiceError(
       `Mã voucher "${code.toUpperCase()}" đã tồn tại trên hệ thống`,
       409
     );
+  }
+
+  if (applicableType === 'SPECIFIC' && applicablePostIds.length > 0) {
+    await validateApplicablePostIds(applicablePostIds, creatorId);
   }
 
   const voucher = await Voucher.create({
@@ -82,6 +119,8 @@ export async function storeCreateVoucher(
     validFrom: fromDate,
     validUntil: untilDate,
     isActive: true,
+    applicableType,
+    applicablePostIds,
   });
 
   return voucher;
@@ -96,6 +135,8 @@ interface UpdateVoucherInput {
   code?: string;
   totalQuantity?: number;
   validUntil?: string;
+  applicableType?: 'ALL' | 'SPECIFIC';
+  applicablePostIds?: string[];
 }
 
 /**
@@ -168,6 +209,16 @@ export async function storeUpdateVoucher(
       );
     }
     voucher.validUntil = newUntil;
+  }
+
+  if (data.applicablePostIds !== undefined) {
+    await validateApplicablePostIds(data.applicablePostIds, creatorId);
+    voucher.applicablePostIds = data.applicablePostIds.map(
+      (id) => new mongoose.Types.ObjectId(id)
+    );
+  }
+  if (data.applicableType !== undefined) {
+    voucher.applicableType = data.applicableType;
   }
 
   await voucher.save();
@@ -360,7 +411,13 @@ export async function getMyVouchers(
 ): Promise<IUserVoucher[]> {
   const filter: Record<string, unknown> = { userId };
   if (statusFilter) {
-    filter.status = statusFilter;
+    // LOCKED = voucher đang được giữ cho 1 giao dịch đang xử lý.
+    // Hiển thị cùng tab UNUSED để user thấy trạng thái "Đang dùng".
+    if (statusFilter === 'UNUSED') {
+      filter.status = { $in: ['UNUSED', 'LOCKED'] };
+    } else {
+      filter.status = statusFilter;
+    }
   }
 
   const userVouchers = await UserVoucher.find(filter)
@@ -388,12 +445,43 @@ export async function getMyVouchers(
     return processed.filter((uv) => uv.status === 'EXPIRED') as IUserVoucher[];
   }
 
-  // Nếu filter UNUSED, loại bỏ những voucher thực tế đã expired
+  // UNUSED tab: trả về cả UNUSED lẫn LOCKED (loại bỏ những cái thực tế đã expired)
   if (statusFilter === 'UNUSED') {
-    return processed.filter((uv) => uv.status === 'UNUSED') as IUserVoucher[];
+    return processed.filter(
+      (uv) => uv.status === 'UNUSED' || uv.status === 'LOCKED'
+    ) as IUserVoucher[];
   }
 
   return processed as IUserVoucher[];
+}
+
+/**
+ * Lấy danh sách UserVoucher của user có thể áp dụng cho 1 bài đăng B2C cụ thể.
+ */
+export async function getApplicableUserVouchersForPost(
+  userId: string,
+  postId: string,
+  storeId: string
+): Promise<IUserVoucher[]> {
+  const now = new Date();
+
+  const userVouchers = await UserVoucher.find({
+    userId,
+    status: 'UNUSED',
+  })
+    .populate('voucherId')
+    .lean();
+
+  const filtered = userVouchers.filter((uv) => {
+    const voucher = uv.voucherId as unknown as IVoucher;
+    if (!voucher || !voucher.isActive || voucher.validUntil <= now)
+      return false;
+    if (voucher.creatorId.toString() !== storeId) return false;
+    if (voucher.applicableType === 'ALL') return true;
+    return voucher.applicablePostIds.some((id) => id.toString() === postId);
+  });
+
+  return filtered as unknown as IUserVoucher[];
 }
 
 // =============================================

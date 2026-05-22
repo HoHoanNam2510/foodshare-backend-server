@@ -5,6 +5,8 @@ import {
   softDeleteVoucher,
   SoftDeleteError,
 } from '@/services/softDeleteService';
+import mongoose from 'mongoose';
+import Post from '@/models/Post';
 import {
   VoucherServiceError,
   storeCreateVoucher as storeCreateVoucherService,
@@ -14,6 +16,7 @@ import {
   getVoucherMarket as getVoucherMarketService,
   redeemVoucher as redeemVoucherService,
   getMyVouchers as getMyVouchersService,
+  getApplicableUserVouchersForPost as getApplicableUserVouchersForPostService,
   adminToggleVoucher as adminToggleVoucherService,
   adminGetVouchers as adminGetVouchersService,
 } from '@/services/voucherService';
@@ -268,6 +271,53 @@ export const getMyVouchers = async (
       success: true,
       data: vouchers,
     });
+  } catch (error) {
+    handleVoucherError(error, res);
+  }
+};
+
+/**
+ * [GET] /api/vouchers/applicable-for-post?postId=:postId
+ * Lấy danh sách voucher của user có thể áp dụng cho bài đăng B2C.
+ */
+export const getApplicableVouchersForPost = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'Bạn cần đăng nhập để thực hiện thao tác này',
+      });
+      return;
+    }
+
+    const postId = req.query.postId as string;
+    if (!postId || !mongoose.Types.ObjectId.isValid(postId)) {
+      res
+        .status(400)
+        .json({ success: false, message: 'postId không hợp lệ hoặc bị thiếu' });
+      return;
+    }
+
+    const post = await Post.findById(postId).select('ownerId');
+    if (!post) {
+      res
+        .status(404)
+        .json({ success: false, message: 'Không tìm thấy bài đăng' });
+      return;
+    }
+
+    const storeId = post.ownerId.toString();
+    const vouchers = await getApplicableUserVouchersForPostService(
+      userId,
+      postId,
+      storeId
+    );
+
+    res.status(200).json({ success: true, data: vouchers });
   } catch (error) {
     handleVoucherError(error, res);
   }
