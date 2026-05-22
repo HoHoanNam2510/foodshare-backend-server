@@ -5,6 +5,8 @@ import Transaction, { ITransaction } from '@/models/Transaction';
 import TransactionStatusLog from '@/models/TransactionStatusLog';
 import Post from '@/models/Post';
 import User from '@/models/User';
+import UserVoucher from '@/models/UserVoucher';
+import Voucher, { IVoucher } from '@/models/Voucher';
 import { awardTransactionPoints } from '@/services/greenPointService';
 import { checkAndAwardBadges } from '@/services/badgeService';
 import { createNotification } from '@/services/notificationService';
@@ -18,6 +20,36 @@ export class TransactionServiceError extends Error {
     super(message);
     this.name = 'TransactionServiceError';
   }
+}
+
+async function _rollbackVoucherForTransaction(
+  transactionId: mongoose.Types.ObjectId
+): Promise<void> {
+  const userVoucher = await UserVoucher.findOne({
+    transactionId,
+    status: 'LOCKED',
+  });
+  if (!userVoucher) return;
+
+  const voucher = await Voucher.findById(userVoucher.voucherId);
+  userVoucher.status =
+    voucher && voucher.validUntil > new Date() ? 'UNUSED' : 'EXPIRED';
+  userVoucher.transactionId = undefined;
+  await userVoucher.save();
+}
+
+async function _finalizeVoucherForTransaction(
+  transactionId: mongoose.Types.ObjectId
+): Promise<void> {
+  const userVoucher = await UserVoucher.findOne({
+    transactionId,
+    status: 'LOCKED',
+  });
+  if (!userVoucher) return;
+
+  userVoucher.status = 'USED';
+  userVoucher.usedAt = new Date();
+  await userVoucher.save();
 }
 
 // =============================================
@@ -106,6 +138,9 @@ export async function updateOrCancelRequest(params: {
         if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
         await post.save();
       }
+      await _rollbackVoucherForTransaction(
+        transaction._id as mongoose.Types.ObjectId
+      );
       transaction.status = 'CANCELLED';
       await transaction.save();
       return { message: 'Đã hủy đơn hàng' };
@@ -146,6 +181,8 @@ export async function getTransactionsForPost(params: {
     .sort({ createdAt: -1 });
 }
 
+// NOTE: Tên hàm misleading — thực ra xử lý cả P2P (REQUEST) lẫn B2C (ORDER).
+// Cả hai loại đều có thể ở trạng thái PENDING và cần store phản hồi.
 export async function respondToP2PRequest(params: {
   transactionId: string;
   ownerId: string;
@@ -166,6 +203,8 @@ export async function respondToP2PRequest(params: {
   }
 
   if (response === 'REJECT') {
+    // Chỉ B2C ORDER mới có stock bị trừ khi tạo đơn và có thể có voucher LOCKED.
+    // P2P REQUEST chưa trừ stock ở bước này nên không cần rollback.
     if (transaction.type === 'ORDER') {
       const post = await Post.findById(transaction.postId);
       if (post) {
@@ -174,6 +213,9 @@ export async function respondToP2PRequest(params: {
           post.status = 'AVAILABLE';
         await post.save();
       }
+      await _rollbackVoucherForTransaction(
+        transaction._id as mongoose.Types.ObjectId
+      );
     }
     transaction.status = 'REJECTED';
     await transaction.save();
@@ -246,11 +288,16 @@ export async function respondToP2PRequest(params: {
     transaction.status = 'ACCEPTED';
     await transaction.save();
 
+    const buyerNotifBody =
+      transaction.totalAmount === 0
+        ? 'Đơn hàng đã được chấp nhận! Đây là đơn hàng 0đ nhờ voucher — bạn không cần chuyển khoản. Hãy đến nhận đồ trực tiếp.'
+        : 'Cửa hàng đã chấp nhận đơn hàng. Hãy đến thanh toán trực tiếp qua chuyển khoản.';
+
     await createNotification(
       transaction.requesterId.toString(),
       'TRANSACTION',
       'Đơn hàng được chấp nhận!',
-      'Cửa hàng đã chấp nhận đơn hàng. Hãy đến thanh toán trực tiếp qua chuyển khoản.',
+      buyerNotifBody,
       transaction._id.toString()
     );
 
@@ -268,37 +315,147 @@ export async function createB2COrder(params: {
   requesterId: string;
   postId: string;
   quantity: number;
+  userVoucherId?: string;
 }): Promise<ITransaction> {
-  const { requesterId, postId, quantity } = params;
+  const { requesterId, postId, quantity, userVoucherId } = params;
 
-  const post = await Post.findById(postId);
-  if (!post || post.status !== 'AVAILABLE' || post.type !== 'B2C_MYSTERY_BAG') {
+  // Atomic stock deduction — guards race conditions (2 users, stock = 1).
+  // ownerId $ne requesterId blocks self-purchase at DB level.
+  const updatedPost = await Post.findOneAndUpdate(
+    {
+      _id: postId,
+      status: 'AVAILABLE',
+      type: 'B2C_MYSTERY_BAG',
+      remainingQuantity: { $gte: quantity },
+      ownerId: { $ne: new mongoose.Types.ObjectId(requesterId) },
+    },
+    { $inc: { remainingQuantity: -quantity } },
+    { new: true }
+  );
+
+  if (!updatedPost) {
+    const post = await Post.findById(postId).select('ownerId');
+    if (post?.ownerId.toString() === requesterId) {
+      throw new TransactionServiceError(
+        'Bạn không thể tự mua hàng của chính mình',
+        400
+      );
+    }
     throw new TransactionServiceError(
-      'Túi mù không tồn tại hoặc đã hết hàng',
-      404
+      'Thực phẩm đã được người khác đặt trước hoặc không còn hàng',
+      409
     );
   }
 
-  if (quantity > post.remainingQuantity) {
-    throw new TransactionServiceError('Số lượng túi mù không đủ', 400);
+  if (updatedPost.remainingQuantity === 0) {
+    updatedPost.status = 'OUT_OF_STOCK';
+    await updatedPost.save();
   }
 
-  post.remainingQuantity -= quantity;
-  if (post.remainingQuantity === 0) post.status = 'OUT_OF_STOCK';
-  await post.save();
+  const baseAmount = updatedPost.price * quantity;
+  let finalAmount = baseAmount;
+  let voucherSnapshot: ITransaction['voucherSnapshot'];
 
-  const totalAmount = post.price * quantity;
+  if (userVoucherId) {
+    if (!mongoose.Types.ObjectId.isValid(userVoucherId)) {
+      throw new TransactionServiceError('UserVoucher ID không hợp lệ', 400);
+    }
 
-  return Transaction.create({
+    const userVoucher = await UserVoucher.findOne({
+      _id: userVoucherId,
+      userId: requesterId,
+      status: 'UNUSED',
+    }).populate('voucherId');
+
+    if (!userVoucher) {
+      throw new TransactionServiceError(
+        'Voucher không tồn tại, đã được dùng hoặc không thuộc về bạn',
+        400
+      );
+    }
+
+    const voucher = userVoucher.voucherId as unknown as IVoucher;
+    const now = new Date();
+
+    if (!voucher.isActive || voucher.validUntil <= now) {
+      throw new TransactionServiceError(
+        'Voucher đã hết hạn hoặc không còn hiệu lực',
+        400
+      );
+    }
+
+    const isApplicable =
+      voucher.applicableType === 'ALL' ||
+      voucher.applicablePostIds.some((id) => id.toString() === postId);
+
+    if (!isApplicable) {
+      throw new TransactionServiceError(
+        'Voucher này không áp dụng cho bài đăng đã chọn',
+        400
+      );
+    }
+
+    const discountAmount =
+      voucher.discountType === 'PERCENTAGE'
+        ? (baseAmount * voucher.discountValue) / 100
+        : voucher.discountValue;
+
+    finalAmount = Math.max(0, baseAmount - discountAmount);
+
+    voucherSnapshot = {
+      userVoucherId: userVoucher._id as mongoose.Types.ObjectId,
+      discountType: voucher.discountType,
+      discountValue: voucher.discountValue,
+      discountAmount: Math.min(discountAmount, baseAmount),
+    };
+  }
+
+  const transaction = await Transaction.create({
     postId,
     requesterId,
-    ownerId: post.ownerId,
+    ownerId: updatedPost.ownerId,
     type: 'ORDER',
     quantity,
-    totalAmount,
+    totalAmount: finalAmount,
     status: 'PENDING',
     paymentMethod: 'BANK_TRANSFER',
+    ...(voucherSnapshot && { voucherSnapshot }),
   });
+
+  if (userVoucherId && voucherSnapshot) {
+    // Atomic lock — prevents double-use if two concurrent requests passed the UNUSED check
+    const locked = await UserVoucher.findOneAndUpdate(
+      { _id: userVoucherId, userId: requesterId, status: 'UNUSED' },
+      { $set: { status: 'LOCKED', transactionId: transaction._id } },
+      { new: true }
+    );
+    if (!locked) {
+      // Another request locked this voucher between our findOne and now — rollback
+      await Promise.all([
+        Transaction.findByIdAndDelete(transaction._id),
+        Post.findByIdAndUpdate(postId, {
+          $inc: { remainingQuantity: quantity },
+        }),
+      ]);
+      throw new TransactionServiceError(
+        'Voucher vừa được sử dụng bởi một giao dịch khác. Vui lòng thử lại.',
+        409
+      );
+    }
+  }
+
+  // Đơn hàng 0đ: cửa hàng không thể chờ chuyển khoản — cần thông báo ngay.
+  if (finalAmount === 0) {
+    await createNotification(
+      updatedPost.ownerId.toString(),
+      'TRANSACTION',
+      'Đơn hàng miễn phí mới!',
+      'Khách vừa đặt đơn dùng voucher giảm 100% (0đ). Không cần kiểm tra chuyển khoản — xác nhận trực tiếp khi khách đến nhận hàng.',
+      transaction._id.toString()
+    );
+  }
+
+  return transaction;
 }
 
 // =============================================
@@ -311,6 +468,10 @@ async function _completeTransaction(transaction: ITransaction): Promise<void> {
     post.status = 'HIDDEN';
     await post.save();
   }
+
+  await _finalizeVoucherForTransaction(
+    transaction._id as mongoose.Types.ObjectId
+  );
 
   await awardTransactionPoints(
     (transaction._id as mongoose.Types.ObjectId).toString(),
@@ -437,6 +598,10 @@ export async function cancelB2COrder(params: {
     if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
     await post.save();
   }
+
+  await _rollbackVoucherForTransaction(
+    transaction._id as mongoose.Types.ObjectId
+  );
 
   await createNotification(
     transaction.requesterId.toString(),
@@ -622,6 +787,10 @@ export async function devForceComplete(
     post.status = 'HIDDEN';
     await post.save();
   }
+
+  await _finalizeVoucherForTransaction(
+    transaction._id as mongoose.Types.ObjectId
+  );
 
   await awardTransactionPoints(
     (transaction._id as mongoose.Types.ObjectId).toString(),

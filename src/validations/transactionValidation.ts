@@ -15,12 +15,13 @@ export const createTransactionSchema = z.object({
     .number({ required_error: 'Số lượng là bắt buộc' })
     .int()
     .min(1, 'Số lượng phải ít nhất là 1'),
+  userVoucherId: mongoIdSchema.optional(),
 });
 
 // PUT /api/transactions/requests/:id — updateOrDeleteRequest
 export const updateOrCancelRequestSchema = z.object({
-  action: z.enum(['UPDATE', 'CANCEL'], {
-    errorMap: () => ({ message: "action phải là 'UPDATE' hoặc 'CANCEL'" }),
+  action: z.enum(['UPDATE', 'DELETE'], {
+    errorMap: () => ({ message: "action phải là 'UPDATE' hoặc 'DELETE'" }),
   }),
   quantity: z.number().int().min(1, 'Số lượng phải ít nhất là 1').optional(),
 });

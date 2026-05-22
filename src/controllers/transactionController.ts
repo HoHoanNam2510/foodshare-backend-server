@@ -167,9 +167,14 @@ export const createOrder = async (
 ): Promise<void> => {
   try {
     const requesterId = req.user?.id as string;
-    const { postId, quantity } = req.body;
+    const { postId, quantity, userVoucherId } = req.body;
 
-    const order = await createB2COrder({ requesterId, postId, quantity });
+    const order = await createB2COrder({
+      requesterId,
+      postId,
+      quantity,
+      userVoucherId,
+    });
 
     res.status(201).json({
       success: true,
