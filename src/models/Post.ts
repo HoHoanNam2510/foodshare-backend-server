@@ -23,6 +23,7 @@ export interface IPost extends Document, ISoftDelete {
   };
   status:
     | 'PENDING_REVIEW'
+    | 'PENDING_MANUAL'
     | 'AVAILABLE'
     | 'BOOKED'
     | 'OUT_OF_STOCK'
@@ -92,6 +93,7 @@ const PostSchema = new Schema<IPost>(
       type: String,
       enum: [
         'PENDING_REVIEW',
+        'PENDING_MANUAL',
         'AVAILABLE',
         'BOOKED',
         'OUT_OF_STOCK',

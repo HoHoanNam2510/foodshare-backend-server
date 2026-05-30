@@ -13,6 +13,11 @@ import {
   adminGetPosts,
   adminUpdatePost,
   adminToggleHidePost,
+  adminBulkStatusUpdate,
+  addBookmark,
+  removeBookmark,
+  checkBookmark,
+  getBookmarks,
 } from '../controllers/postController';
 import {
   verifyAuth,
@@ -53,6 +58,15 @@ router.put(
 // (ADM_P03: Admin ẩn bài đăng vi phạm)
 router.patch('/admin/:id/hide', verifyAuth, verifyAdmin, adminToggleHidePost);
 
+// [PATCH] /api/posts/admin/bulk-status
+// (ADM_P04: Bulk approve/reject nhiều bài PENDING_MANUAL cùng lúc)
+router.patch(
+  '/admin/bulk-status',
+  verifyAuth,
+  verifyAdmin,
+  adminBulkStatusUpdate
+);
+
 // =============================================
 // NHÓM USER / STORE (yêu cầu đăng nhập)
 // =============================================
@@ -79,6 +93,13 @@ router.post(
 // [GET] /api/posts/me
 // (PST_F01: Xem danh sách bài đăng gần đây của chính người dùng)
 router.get('/me', verifyAuth, getMyPosts);
+
+// ── Bookmark routes (auth required) ──────────────────────────────────────────
+// Phải đặt trước /:id để tránh bị catch bởi param route
+router.get('/bookmarks', verifyAuth, getBookmarks);
+router.get('/bookmarks/check/:postId', verifyAuth, checkBookmark);
+router.post('/bookmarks/:postId', verifyAuth, addBookmark);
+router.delete('/bookmarks/:postId', verifyAuth, removeBookmark);
 
 // [PUT] /api/posts/:id
 // (PST_F03: Sửa thông tin bài đăng dựa theo ID)

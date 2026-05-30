@@ -36,6 +36,7 @@ export interface IUser extends Document, ISoftDelete {
     bankAccountNumber?: string;
     bankAccountName?: string;
   };
+  savedPosts: mongoose.Types.ObjectId[];
   greenPoints: number;
   averageRating: number;
   expoPushToken?: string;
@@ -122,6 +123,10 @@ const UserSchema = new Schema<IUser>(
       bankAccountName: String,
     },
 
+    savedPosts: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'Post' }],
+      default: [],
+    },
     greenPoints: { type: Number, default: 0 },
     averageRating: { type: Number, default: 5.0 },
     expoPushToken: { type: String, default: null },

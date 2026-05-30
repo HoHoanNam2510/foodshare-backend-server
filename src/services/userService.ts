@@ -233,6 +233,34 @@ export async function getUserById(
   return toSafeUser(user);
 }
 
+export async function getPublicUserById(
+  id: string
+): Promise<Record<string, unknown>> {
+  const user = await User.findById(id).select(
+    'fullName avatar role greenPoints averageRating totalReviews createdAt storeInfo'
+  );
+
+  if (!user) {
+    throw new UserServiceError('Không tìm thấy người dùng', 404);
+  }
+
+  const data: Record<string, unknown> = {
+    _id: user._id,
+    fullName: user.fullName,
+    avatar: user.avatar,
+    role: user.role,
+    greenPoints: user.greenPoints ?? 0,
+    createdAt: user.createdAt,
+  };
+
+  const raw = user.toObject() as unknown as Record<string, unknown>;
+  if (raw.averageRating !== undefined) data.averageRating = raw.averageRating;
+  if (raw.totalReviews !== undefined) data.totalReviews = raw.totalReviews;
+  if (user.role === 'STORE') data.storeInfo = raw.storeInfo;
+
+  return data;
+}
+
 export async function updateUser(
   id: string,
   payload: UpdateUserInput

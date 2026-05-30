@@ -3,6 +3,7 @@ import { verifyAuth, verifyAdmin } from '@/middlewares/authMiddleware';
 import { validateBody } from '@/middlewares/validateBodyMiddleware';
 import {
   updateSystemBankSchema,
+  updateSoftDeleteSchema,
   updateAIModerationSchema,
 } from '@/validations/configValidation';
 import SystemConfig from '@/models/SystemConfig';
@@ -55,6 +56,33 @@ router.put(
         { upsert: true, new: true, runValidators: true }
       );
 
+      res.status(200).json({ success: true, data: config });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Lỗi không xác định';
+      res.status(500).json({ success: false, message });
+    }
+  }
+);
+
+/**
+ * PATCH /api/config/soft-delete
+ * Cập nhật cấu hình thùng rác (grace period + cleanup schedule)
+ */
+router.patch(
+  '/soft-delete',
+  validateBody(updateSoftDeleteSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const { softDelete } = req.body;
+      const config = await SystemConfig.findOneAndUpdate(
+        {},
+        {
+          'softDelete.gracePeriodDays': softDelete.gracePeriodDays,
+          'softDelete.cleanupSchedule': softDelete.cleanupSchedule,
+        },
+        { upsert: true, new: true, runValidators: true }
+      );
       res.status(200).json({ success: true, data: config });
     } catch (error: unknown) {
       const message =
@@ -125,14 +153,21 @@ router.get('/ai-moderation/logs', async (req: Request, res: Response) => {
     );
     const skip = (page - 1) * limit;
 
+    const VALID_DECISIONS = ['APPROVED', 'REJECTED', 'PENDING_MANUAL'];
+    const decisionFilter =
+      req.query.decision &&
+      VALID_DECISIONS.includes(req.query.decision as string)
+        ? { decision: req.query.decision }
+        : {};
+
     const [logs, total] = await Promise.all([
-      AIPostModerationLog.find()
+      AIPostModerationLog.find(decisionFilter)
         .populate('postId', 'title')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      AIPostModerationLog.countDocuments(),
+      AIPostModerationLog.countDocuments(decisionFilter),
     ]);
 
     res.status(200).json({

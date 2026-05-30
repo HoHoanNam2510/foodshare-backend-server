@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import mongoose from 'mongoose';
 import logger from '@/utils/logger';
 import Post, { IPost } from '@/models/Post';
 import PostCreationPasscode from '@/models/PostCreationPasscode';
@@ -17,6 +18,51 @@ const MAX_LIMIT = 100;
 
 const DEFAULT_REJECT_THRESHOLD = 50;
 const DEFAULT_APPROVE_THRESHOLD = 70;
+
+const RADAR_RADIUS_METERS = 5000;
+
+async function sendRadarNotificationsForPost(post: IPost): Promise<void> {
+  if (!post.location?.coordinates) {
+    logger.info(`[RADAR] Post ${post._id} has no location — skipping`);
+    return;
+  }
+  const [lng, lat] = post.location.coordinates;
+  try {
+    const nearbyUsers = await User.find({
+      location: {
+        $near: {
+          $geometry: { type: 'Point', coordinates: [lng, lat] },
+          $maxDistance: RADAR_RADIUS_METERS,
+        },
+      },
+      _id: { $ne: post.ownerId },
+      status: 'ACTIVE',
+    })
+      .select('_id')
+      .lean();
+
+    logger.info(
+      `[RADAR] Post ${post._id} (${post.title}) at [${lng},${lat}] → ${nearbyUsers.length} nearby users`
+    );
+
+    await Promise.all(
+      nearbyUsers.map((u) =>
+        createNotification(
+          u._id.toString(),
+          'RADAR',
+          'Có đồ ăn gần bạn!',
+          `"${post.title}" vừa được đăng gần bạn. Xem ngay!`,
+          post._id.toString()
+        )
+      )
+    );
+  } catch (err) {
+    logger.error(
+      `[RADAR] sendRadarNotificationsForPost failed for post ${post._id}:`,
+      err
+    );
+  }
+}
 
 // --- AI Moderation ---
 
@@ -117,15 +163,16 @@ export async function runAIModerationJob(
 
     const config = await SystemConfig.findOne();
 
-    // Khi admin tắt AI moderation, không chạy cho bất kỳ trigger nào (kể cả ON_CREATE/ON_UPDATE).
-    // Scheduler đã tự check enabled; guard này đảm bảo on-create/on-update cũng tuân thủ.
-    if (!config?.aiModeration?.enabled) return null;
+    // MANUAL_ADMIN bypass qua enabled check — admin có thể chạy thủ công dù AI đang tắt.
+    // ON_CREATE / ON_UPDATE / BATCH_SCHEDULER chỉ chạy khi AI enabled.
+    if (!config?.aiModeration?.enabled && trigger !== 'MANUAL_ADMIN')
+      return null;
 
     const rejectThreshold =
-      config.aiModeration.trustScoreThresholds?.reject ??
+      config?.aiModeration?.trustScoreThresholds?.reject ??
       DEFAULT_REJECT_THRESHOLD;
     const approveThreshold =
-      config.aiModeration.trustScoreThresholds?.approve ??
+      config?.aiModeration?.trustScoreThresholds?.approve ??
       DEFAULT_APPROVE_THRESHOLD;
 
     const { trustScore, reason } = await moderatePostWithAI({
@@ -145,6 +192,7 @@ export async function runAIModerationJob(
       newStatus = 'AVAILABLE';
     } else {
       decision = 'PENDING_MANUAL';
+      newStatus = 'PENDING_MANUAL';
     }
 
     if (newStatus === 'REJECTED') {
@@ -163,6 +211,16 @@ export async function runAIModerationJob(
         'SYSTEM',
         'Bài đăng đã được duyệt',
         `Bài đăng "${post.title}" đã được duyệt và xuất hiện trên bản đồ.`,
+        postId
+      );
+      await sendRadarNotificationsForPost(post);
+    } else if (newStatus === 'PENDING_MANUAL') {
+      await Post.findByIdAndUpdate(postId, { status: 'PENDING_MANUAL' });
+      await createNotification(
+        post.ownerId.toString(),
+        'SYSTEM',
+        'Bài đăng cần duyệt thủ công',
+        `Bài đăng "${post.title}" cần được admin xem xét thêm trước khi xuất hiện.`,
         postId
       );
     }
@@ -509,14 +567,166 @@ export async function getPostById(
   return post;
 }
 
+export type ExploreQuery = {
+  baseFilter: Record<string, unknown>;
+  search?: string;
+  categoryId?: string;
+  sort: 'newest' | 'expiring' | 'closest';
+  page: number;
+  limit: number;
+  coordinates?: [number, number]; // [lng, lat] — required when sort='closest'
+};
+
+export type PaginatedPosts = {
+  posts: IPost[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
 export async function getAvailablePosts(
-  filter: Record<string, unknown>,
-  sortOption: Record<string, 1 | -1>
-): Promise<IPost[]> {
-  return Post.find(filter)
+  query: ExploreQuery
+): Promise<PaginatedPosts> {
+  const { baseFilter, search, categoryId, sort, page, limit, coordinates } =
+    query;
+  const skip = (page - 1) * limit;
+
+  if (sort === 'closest' && coordinates) {
+    const geoQuery: Record<string, unknown> = { ...baseFilter };
+    if (search) geoQuery.title = { $regex: search, $options: 'i' };
+    if (categoryId) geoQuery.category = categoryId;
+
+    const geoNearStage = {
+      $geoNear: {
+        near: { type: 'Point' as const, coordinates },
+        distanceField: 'distanceMeters',
+        spherical: true,
+        query: geoQuery,
+        maxDistance: 50000,
+      },
+    };
+
+    const [posts, countResult] = await Promise.all([
+      Post.aggregate([
+        geoNearStage,
+        { $skip: skip },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'ownerId',
+            foreignField: '_id',
+            as: 'ownerArr',
+            pipeline: [
+              { $project: { fullName: 1, avatar: 1, averageRating: 1 } },
+            ],
+          },
+        },
+        { $addFields: { ownerId: { $arrayElemAt: ['$ownerArr', 0] } } },
+        { $project: { ownerArr: 0 } },
+      ]),
+      Post.aggregate([geoNearStage, { $count: 'total' }]),
+    ]);
+
+    const total = (countResult[0] as { total: number } | undefined)?.total ?? 0;
+    return {
+      posts: posts as IPost[],
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 0,
+      },
+    };
+  }
+
+  const filter: Record<string, unknown> = { ...baseFilter };
+  if (search) filter.title = { $regex: search, $options: 'i' };
+  if (categoryId) filter.category = categoryId;
+
+  const sortOption: Record<string, 1 | -1> =
+    sort === 'expiring' ? { expiryDate: 1 } : { createdAt: -1 };
+
+  const [posts, total] = await Promise.all([
+    Post.find(filter)
+      .populate('ownerId', 'fullName avatar averageRating')
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Post.countDocuments(filter),
+  ]);
+
+  return {
+    posts: posts as IPost[],
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 0,
+    },
+  };
+}
+
+// ── Bookmarks ──────────────────────────────────────────────────────────────────
+
+export async function addBookmark(
+  userId: string,
+  postId: string
+): Promise<void> {
+  await User.findByIdAndUpdate(userId, { $addToSet: { savedPosts: postId } });
+}
+
+export async function removeBookmark(
+  userId: string,
+  postId: string
+): Promise<void> {
+  await User.findByIdAndUpdate(userId, { $pull: { savedPosts: postId } });
+}
+
+export async function isPostBookmarked(
+  userId: string,
+  postId: string
+): Promise<boolean> {
+  const user = await User.findById(userId).select('savedPosts').lean();
+  if (!user || !('savedPosts' in user) || !Array.isArray(user.savedPosts))
+    return false;
+  return user.savedPosts.some((id) => String(id) === postId);
+}
+
+export async function getBookmarks(
+  userId: string,
+  page: number,
+  limit: number
+): Promise<PaginatedPosts> {
+  const skip = (page - 1) * limit;
+  const user = await User.findById(userId).select('savedPosts').lean();
+  if (!user || !('savedPosts' in user) || !Array.isArray(user.savedPosts)) {
+    return { posts: [], pagination: { page, limit, total: 0, totalPages: 0 } };
+  }
+
+  const savedIds = user.savedPosts as mongoose.Types.ObjectId[];
+  const total = savedIds.length;
+
+  const posts = await Post.find({ _id: { $in: savedIds } })
     .populate('ownerId', 'fullName avatar averageRating')
-    .sort(sortOption)
-    .limit(100);
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  return {
+    posts: posts as IPost[],
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 0,
+    },
+  };
 }
 
 export async function searchPostsNear(
@@ -586,6 +796,29 @@ export async function adminUpdatePostRecord(
   );
 }
 
+export async function adminBulkUpdateStatus(
+  postIds: string[],
+  status: 'AVAILABLE' | 'REJECTED'
+): Promise<number> {
+  const posts =
+    status === 'AVAILABLE'
+      ? await Post.find({ _id: { $in: postIds } }).lean()
+      : [];
+
+  const result = await Post.updateMany(
+    { _id: { $in: postIds } },
+    { $set: { status } }
+  );
+
+  if (status === 'AVAILABLE') {
+    await Promise.all(
+      posts.map((p) => sendRadarNotificationsForPost(p as unknown as IPost))
+    );
+  }
+
+  return result.modifiedCount;
+}
+
 export type ToggleHideResult =
   | { ok: true; newStatus: 'AVAILABLE' | 'HIDDEN'; post: IPost }
   | { ok: false; statusCode: number; message: string; errorCode?: string };
@@ -617,6 +850,7 @@ export async function adminToggleHidePost(
     }
     post.status = 'AVAILABLE';
     await post.save();
+    await sendRadarNotificationsForPost(post);
     return { ok: true, newStatus: 'AVAILABLE', post };
   }
 

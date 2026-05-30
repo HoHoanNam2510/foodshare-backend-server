@@ -4,6 +4,7 @@ import {
   createUser,
   getUsers,
   getUserById,
+  getPublicUserProfile,
   updateUser,
   deleteUser,
   reviewKyc,
@@ -23,6 +24,14 @@ import {
 } from '../validations/userValidation';
 
 const router = Router();
+
+// [GET] /api/users/:id/profile — public profile (auth user, không cần admin)
+router.get(
+  '/:id/profile',
+  verifyAuth,
+  validateParams(userIdParamSchema),
+  getPublicUserProfile
+);
 
 router.use(verifyAuth, verifyAdmin);
 

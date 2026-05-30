@@ -25,7 +25,12 @@ import {
   updatePostRecord,
   getPostForOwner,
   adminUpdatePostRecord,
+  adminBulkUpdateStatus,
   adminToggleHidePost as toggleHidePostService,
+  addBookmark as addBookmarkService,
+  removeBookmark as removeBookmarkService,
+  isPostBookmarked,
+  getBookmarks as getBookmarksService,
   PostServiceError,
   POST_PASSCODE_EXPIRE_MINUTES_EXPORT as POST_PASSCODE_EXPIRE_MINUTES,
 } from '@/services/postService';
@@ -392,27 +397,53 @@ export const getExplorePosts = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { type, sort } = req.query;
+    const { type, sort, search, category, page, limit, lat, lng } = req.query;
 
     expireOldPosts().catch((err) =>
       logger.error('[getExplorePosts] expireOldPosts failed', { error: err })
     );
 
     const now = new Date();
-    const filter: Record<string, unknown> = {
+    const baseFilter: Record<string, unknown> = {
       status: 'AVAILABLE',
       expiryDate: { $gt: now },
     };
-    if (type && typeof type === 'string') filter.type = type;
+    if (type && typeof type === 'string') baseFilter.type = type;
 
-    let sortOption: Record<string, 1 | -1> = { createdAt: -1 };
-    if (sort === 'expiring') sortOption = { expiryDate: 1 };
+    const sortMode = (typeof sort === 'string' ? sort : 'newest') as
+      | 'newest'
+      | 'expiring'
+      | 'closest';
 
-    const posts = await getAvailablePosts(filter, sortOption);
+    let coordinates: [number, number] | undefined;
+    if (sortMode === 'closest' && lat && lng) {
+      const parsedLng = parseFloat(lng as string);
+      const parsedLat = parseFloat(lat as string);
+      if (!isNaN(parsedLng) && !isNaN(parsedLat)) {
+        coordinates = [parsedLng, parsedLat];
+      }
+    }
+
+    const pageNum = Math.max(parseInt(page as string) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit as string) || 15, 1), 50);
+
+    const result = await getAvailablePosts({
+      baseFilter,
+      search:
+        typeof search === 'string' && search.trim() ? search.trim() : undefined,
+      categoryId:
+        typeof category === 'string' && category ? category : undefined,
+      sort: sortMode,
+      page: pageNum,
+      limit: limitNum,
+      coordinates,
+    });
+
     res.status(200).json({
       success: true,
       message: 'Lấy danh sách bài đăng thành công',
-      data: posts,
+      data: result.posts,
+      pagination: result.pagination,
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
@@ -421,6 +452,99 @@ export const getExplorePosts = async (
       message: 'Lỗi server',
       ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
     });
+  }
+};
+
+// ── Bookmarks ──────────────────────────────────────────────────────────────────
+
+export const addBookmark = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id as string;
+    const postId = String(req.params.postId);
+
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      res
+        .status(400)
+        .json({ success: false, message: 'ID bài đăng không hợp lệ' });
+      return;
+    }
+
+    await addBookmarkService(userId, postId);
+    res.status(200).json({ success: true, message: 'Đã lưu bài đăng' });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res.status(500).json({ success: false, message: errorMessage });
+  }
+};
+
+export const removeBookmark = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id as string;
+    const postId = String(req.params.postId);
+
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      res
+        .status(400)
+        .json({ success: false, message: 'ID bài đăng không hợp lệ' });
+      return;
+    }
+
+    await removeBookmarkService(userId, postId);
+    res.status(200).json({ success: true, message: 'Đã bỏ lưu bài đăng' });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res.status(500).json({ success: false, message: errorMessage });
+  }
+};
+
+export const checkBookmark = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id as string;
+    const postId = String(req.params.postId);
+
+    if (!mongoose.Types.ObjectId.isValid(postId)) {
+      res
+        .status(400)
+        .json({ success: false, message: 'ID bài đăng không hợp lệ' });
+      return;
+    }
+
+    const isBookmarked = await isPostBookmarked(userId, postId);
+    res.status(200).json({ success: true, data: { isBookmarked } });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res.status(500).json({ success: false, message: errorMessage });
+  }
+};
+
+export const getBookmarks = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id as string;
+    const { page, limit } = req.query;
+    const pageNum = Math.max(parseInt(page as string) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit as string) || 15, 1), 50);
+
+    const result = await getBookmarksService(userId, pageNum, limitNum);
+    res.status(200).json({
+      success: true,
+      data: result.posts,
+      pagination: result.pagination,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res.status(500).json({ success: false, message: errorMessage });
   }
 };
 
@@ -654,6 +778,47 @@ export const adminUpdatePost = async (
       success: true,
       message: 'Admin cập nhật bài đăng thành công',
       data: updatedPost,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Lỗi server';
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      ...(process.env.NODE_ENV !== 'production' && { error: errorMessage }),
+    });
+  }
+};
+
+export const adminBulkStatusUpdate = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { postIds, status } = req.body as {
+      postIds: string[];
+      status: 'AVAILABLE' | 'REJECTED';
+    };
+
+    if (!Array.isArray(postIds) || postIds.length === 0) {
+      res
+        .status(400)
+        .json({ success: false, message: 'postIds không được để trống' });
+      return;
+    }
+
+    const validStatuses = ['AVAILABLE', 'REJECTED'];
+    if (!validStatuses.includes(status)) {
+      res
+        .status(400)
+        .json({ success: false, message: 'Trạng thái không hợp lệ' });
+      return;
+    }
+
+    const modifiedCount = await adminBulkUpdateStatus(postIds, status);
+    res.status(200).json({
+      success: true,
+      message: `Đã cập nhật ${modifiedCount} bài đăng`,
+      data: { modifiedCount },
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Lỗi server';

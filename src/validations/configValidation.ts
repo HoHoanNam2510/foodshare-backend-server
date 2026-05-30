@@ -10,6 +10,14 @@ export const updateSystemBankSchema = z.object({
   systemBankAccountName: z.string().min(1, 'Tên chủ tài khoản là bắt buộc'),
 });
 
+// PATCH /api/config/soft-delete — update soft delete config
+export const updateSoftDeleteSchema = z.object({
+  softDelete: z.object({
+    gracePeriodDays: z.union([z.literal(7), z.literal(30)]),
+    cleanupSchedule: z.enum(['WEEKLY', 'MONTHLY', 'BOTH']),
+  }),
+});
+
 // PUT /api/config/ai-moderation — update AI moderation settings
 export const updateAIModerationSchema = z.object({
   enabled: z.boolean({

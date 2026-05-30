@@ -6,6 +6,7 @@ import {
   createUser as createUserService,
   getUsers as getUsersService,
   getUserById as getUserByIdService,
+  getPublicUserById as getPublicUserByIdService,
   updateUser as updateUserService,
   deleteUser as deleteUserService,
   reviewKyc as reviewKycService,
@@ -82,6 +83,24 @@ export const getUserById = async (
     res.status(200).json({
       success: true,
       message: 'Lấy chi tiết người dùng thành công',
+      data: user,
+    });
+  } catch (error: unknown) {
+    handleUserError(error, res);
+  }
+};
+
+export const getPublicUserProfile = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const id = getParamAsString(req.params.id);
+    const user = await getPublicUserByIdService(id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy hồ sơ công khai thành công',
       data: user,
     });
   } catch (error: unknown) {
