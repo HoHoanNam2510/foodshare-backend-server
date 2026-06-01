@@ -230,7 +230,10 @@ export async function adminResolveFeedback(
     'FEEDBACK',
     'Phản hồi của bạn đã được xử lý',
     `Yêu cầu "${feedback.title}" đã được đóng. Nhấn để xem phản hồi từ admin.`,
-    (feedback._id as mongoose.Types.ObjectId).toString()
+    (feedback._id as mongoose.Types.ObjectId).toString(),
+    'notifContent.feedback.closed.title',
+    'notifContent.feedback.closed.body',
+    { feedbackTitle: feedback.title }
   );
 
   const populated = await feedback.populate([

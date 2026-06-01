@@ -52,7 +52,10 @@ async function sendRadarNotificationsForPost(post: IPost): Promise<void> {
           'RADAR',
           'Có đồ ăn gần bạn!',
           `"${post.title}" vừa được đăng gần bạn. Xem ngay!`,
-          post._id.toString()
+          post._id.toString(),
+          'notifContent.radar.newNearby.title',
+          'notifContent.radar.newNearby.body',
+          { postTitle: post.title }
         )
       )
     );
@@ -202,7 +205,10 @@ export async function runAIModerationJob(
         'SYSTEM',
         'Bài đăng bị từ chối',
         `Bài đăng "${post.title}" đã bị từ chối. Lý do: ${reason}`,
-        postId
+        postId,
+        'notifContent.post.rejected.title',
+        'notifContent.post.rejected.body',
+        { postTitle: post.title, reason }
       );
     } else if (newStatus === 'AVAILABLE') {
       await Post.findByIdAndUpdate(postId, { status: 'AVAILABLE' });
@@ -211,7 +217,10 @@ export async function runAIModerationJob(
         'SYSTEM',
         'Bài đăng đã được duyệt',
         `Bài đăng "${post.title}" đã được duyệt và xuất hiện trên bản đồ.`,
-        postId
+        postId,
+        'notifContent.post.approved.title',
+        'notifContent.post.approved.body',
+        { postTitle: post.title }
       );
       await sendRadarNotificationsForPost(post);
     } else if (newStatus === 'PENDING_MANUAL') {
@@ -221,7 +230,10 @@ export async function runAIModerationJob(
         'SYSTEM',
         'Bài đăng cần duyệt thủ công',
         `Bài đăng "${post.title}" cần được admin xem xét thêm trước khi xuất hiện.`,
-        postId
+        postId,
+        'notifContent.post.pendingManual.title',
+        'notifContent.post.pendingManual.body',
+        { postTitle: post.title }
       );
     }
 

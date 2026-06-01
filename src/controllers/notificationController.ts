@@ -6,6 +6,8 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   deleteUserNotification,
+  deleteAllReadNotifications,
+  deleteManyUserNotifications,
   saveUserPushToken,
   broadcastNotification,
   getBroadcastHistory,
@@ -130,6 +132,59 @@ export const deleteNotification = async (
     }
 
     res.status(200).json({ success: true, message: 'Đã xóa thông báo' });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+export const deleteAllRead = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id as string;
+    const deletedCount = await deleteAllReadNotifications(userId);
+    res.status(200).json({
+      success: true,
+      message: `Đã xóa ${deletedCount} thông báo đã đọc`,
+      data: { deletedCount },
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Lỗi không xác định';
+    res
+      .status(500)
+      .json({ success: false, message: 'Lỗi server', error: message });
+  }
+};
+
+export const deleteMany = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id as string;
+    const { ids } = req.body as { ids: string[] };
+
+    const invalidIds = ids.filter((id) => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: 'Danh sách chứa ID thông báo không hợp lệ',
+      });
+      return;
+    }
+
+    const deletedCount = await deleteManyUserNotifications(userId, ids);
+    res.status(200).json({
+      success: true,
+      message: `Đã xóa ${deletedCount} thông báo`,
+      data: { deletedCount },
+    });
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Lỗi không xác định';

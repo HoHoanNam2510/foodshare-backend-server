@@ -170,7 +170,10 @@ export async function createReview(
     'SYSTEM',
     'Bạn có đánh giá mới!',
     `Bạn vừa nhận được đánh giá ${rating} sao từ một giao dịch vừa hoàn tất.`,
-    new mongoose.Types.ObjectId(transactionId).toString()
+    new mongoose.Types.ObjectId(transactionId).toString(),
+    'notifContent.review.newReview.title',
+    'notifContent.review.newReview.body',
+    { rating }
   );
 
   // Trigger REVIEW_RECEIVED badge check cho người bị đánh giá

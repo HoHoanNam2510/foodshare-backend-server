@@ -341,7 +341,12 @@ export async function adminProcessReport(
       resolutionNote
         ? `Báo cáo của bạn đã bị bác bỏ. Lý do: ${resolutionNote}. Nếu có thêm bằng chứng, hãy gửi báo cáo mới.`
         : 'Báo cáo của bạn đã bị bác bỏ. Nếu có thêm bằng chứng, hãy gửi báo cáo mới.',
-      (report._id as mongoose.Types.ObjectId).toString()
+      (report._id as mongoose.Types.ObjectId).toString(),
+      'notifContent.report.dismissed.title',
+      resolutionNote
+        ? 'notifContent.report.dismissedWithReason.body'
+        : 'notifContent.report.dismissed.body',
+      resolutionNote ? { reason: resolutionNote } : undefined
     );
   } else if (status === 'RESOLVED') {
     await createNotification(
@@ -349,7 +354,9 @@ export async function adminProcessReport(
       'SYSTEM',
       'Báo cáo đã được xử lý',
       'Báo cáo của bạn đã được xem xét và xử lý.',
-      (report._id as mongoose.Types.ObjectId).toString()
+      (report._id as mongoose.Types.ObjectId).toString(),
+      'notifContent.report.resolved.title',
+      'notifContent.report.resolved.body'
     );
   }
 

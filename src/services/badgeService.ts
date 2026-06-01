@@ -206,7 +206,10 @@ async function awardBadge(userId: string, badge: IBadge): Promise<void> {
     'SYSTEM',
     'Huy hiệu mới!',
     `Chúc mừng! Bạn vừa mở khóa huy hiệu "${badge.name}"! +${badge.pointReward} điểm`,
-    (badge._id as mongoose.Types.ObjectId).toString()
+    (badge._id as mongoose.Types.ObjectId).toString(),
+    'notifContent.badge.unlocked.title',
+    'notifContent.badge.unlocked.body',
+    { badgeName: badge.name, points: badge.pointReward }
   );
 }
 

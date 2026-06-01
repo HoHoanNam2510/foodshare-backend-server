@@ -7,6 +7,8 @@ import {
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  deleteAllRead,
+  deleteMany,
   savePushToken,
   adminBroadcastNotification,
   adminGetBroadcastHistory,
@@ -14,6 +16,7 @@ import {
 import {
   savePushTokenSchema,
   adminBroadcastSchema,
+  batchDeleteSchema,
 } from '@/validations/notificationValidation';
 
 const router = Router();
@@ -23,6 +26,13 @@ router.get('/', verifyAuth, getMyNotifications);
 router.get('/unread-count', verifyAuth, getUnreadCount);
 router.patch('/read-all', verifyAuth, markAllAsRead);
 router.patch('/:id/read', verifyAuth, markAsRead);
+router.delete('/read-all', verifyAuth, deleteAllRead);
+router.delete(
+  '/batch',
+  verifyAuth,
+  validateBody(batchDeleteSchema),
+  deleteMany
+);
 router.delete('/:id', verifyAuth, deleteNotification);
 router.put(
   '/push-token',

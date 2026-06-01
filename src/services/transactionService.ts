@@ -224,7 +224,9 @@ export async function respondToP2PRequest(params: {
       'TRANSACTION',
       'Yêu cầu bị từ chối',
       'Yêu cầu xin đồ của bạn đã bị từ chối bởi người đăng.',
-      transaction._id.toString()
+      transaction._id.toString(),
+      'notifContent.tx.p2pRejected.title',
+      'notifContent.tx.p2pRejected.body'
     );
     return { message: 'Đã từ chối yêu cầu' };
   }
@@ -254,7 +256,9 @@ export async function respondToP2PRequest(params: {
         'TRANSACTION',
         'Yêu cầu được chấp nhận!',
         'Yêu cầu xin đồ của bạn đã được chấp nhận. Hãy đến nhận đồ và quét mã QR.',
-        transaction._id.toString()
+        transaction._id.toString(),
+        'notifContent.tx.p2pAccepted.title',
+        'notifContent.tx.p2pAccepted.body'
       );
 
       return {
@@ -288,17 +292,21 @@ export async function respondToP2PRequest(params: {
     transaction.status = 'ACCEPTED';
     await transaction.save();
 
-    const buyerNotifBody =
-      transaction.totalAmount === 0
-        ? 'Đơn hàng đã được chấp nhận! Đây là đơn hàng 0đ nhờ voucher — bạn không cần chuyển khoản. Hãy đến nhận đồ trực tiếp.'
-        : 'Cửa hàng đã chấp nhận đơn hàng. Hãy đến thanh toán trực tiếp qua chuyển khoản.';
+    const isFreeOrder = transaction.totalAmount === 0;
+    const buyerNotifBody = isFreeOrder
+      ? 'Đơn hàng đã được chấp nhận! Đây là đơn hàng 0đ nhờ voucher — bạn không cần chuyển khoản. Hãy đến nhận đồ trực tiếp.'
+      : 'Cửa hàng đã chấp nhận đơn hàng. Hãy đến thanh toán trực tiếp qua chuyển khoản.';
 
     await createNotification(
       transaction.requesterId.toString(),
       'TRANSACTION',
       'Đơn hàng được chấp nhận!',
       buyerNotifBody,
-      transaction._id.toString()
+      transaction._id.toString(),
+      'notifContent.tx.b2cAccepted.title',
+      isFreeOrder
+        ? 'notifContent.tx.b2cAcceptedFree.body'
+        : 'notifContent.tx.b2cAcceptedPaid.body'
     );
 
     return { message: 'Đã chấp nhận đơn hàng', data: transaction };
@@ -451,7 +459,9 @@ export async function createB2COrder(params: {
       'TRANSACTION',
       'Đơn hàng miễn phí mới!',
       'Khách vừa đặt đơn dùng voucher giảm 100% (0đ). Không cần kiểm tra chuyển khoản — xác nhận trực tiếp khi khách đến nhận hàng.',
-      transaction._id.toString()
+      transaction._id.toString(),
+      'notifContent.tx.b2cFreeOrderNew.title',
+      'notifContent.tx.b2cFreeOrderNew.body'
     );
   }
 
@@ -486,14 +496,18 @@ async function _completeTransaction(transaction: ITransaction): Promise<void> {
       'TRANSACTION',
       'Giao dịch hoàn tất!',
       'Giao dịch của bạn đã hoàn tất thành công. Cảm ơn bạn đã sử dụng FoodShare!',
-      transaction._id.toString()
+      transaction._id.toString(),
+      'notifContent.tx.completedRequester.title',
+      'notifContent.tx.completedRequester.body'
     ),
     createNotification(
       transaction.ownerId.toString(),
       'TRANSACTION',
       'Giao dịch hoàn tất!',
       'Đồ của bạn đã được nhận thành công. Cảm ơn bạn đã chia sẻ!',
-      transaction._id.toString()
+      transaction._id.toString(),
+      'notifContent.tx.completedOwner.title',
+      'notifContent.tx.completedOwner.body'
     ),
   ]);
 
@@ -608,7 +622,9 @@ export async function cancelB2COrder(params: {
     'TRANSACTION',
     'Đơn hàng bị hủy',
     'Cửa hàng đã hủy đơn hàng của bạn.',
-    transaction._id.toString()
+    transaction._id.toString(),
+    'notifContent.tx.cancelled.title',
+    'notifContent.tx.cancelled.body'
   );
 }
 

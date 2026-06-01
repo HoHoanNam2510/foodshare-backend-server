@@ -5,6 +5,9 @@ export interface INotification extends Document {
   type: 'TRANSACTION' | 'RADAR' | 'SYSTEM' | 'VOUCHER' | 'FEEDBACK';
   title: string;
   body: string;
+  titleKey?: string;
+  bodyKey?: string;
+  bodyParams?: Record<string, string | number>;
   referenceId?: mongoose.Types.ObjectId;
   isRead: boolean;
   createdAt: Date;
@@ -33,6 +36,9 @@ const NotificationSchema = new Schema<INotification>(
       required: true,
       trim: true,
     },
+    titleKey: { type: String },
+    bodyKey: { type: String },
+    bodyParams: { type: Schema.Types.Mixed },
     referenceId: {
       type: Schema.Types.ObjectId,
     },

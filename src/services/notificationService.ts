@@ -29,7 +29,10 @@ export async function createNotification(
   type: NotificationType,
   title: string,
   body: string,
-  referenceId?: string | mongoose.Types.ObjectId
+  referenceId?: string | mongoose.Types.ObjectId,
+  titleKey?: string,
+  bodyKey?: string,
+  bodyParams?: Record<string, string | number>
 ): Promise<void> {
   try {
     const notification = await Notification.create({
@@ -37,6 +40,9 @@ export async function createNotification(
       type,
       title,
       body,
+      ...(titleKey && { titleKey }),
+      ...(bodyKey && { bodyKey }),
+      ...(bodyParams && { bodyParams }),
       ...(referenceId && {
         referenceId: new mongoose.Types.ObjectId(referenceId.toString()),
       }),
@@ -208,7 +214,26 @@ export async function deleteUserNotification(
   userId: string,
   id: string
 ): Promise<unknown | null> {
-  return Notification.findOneAndDelete({ _id: id, userId });
+  return Notification.findOneAndDelete({ _id: id, userId, isRead: true });
+}
+
+export async function deleteAllReadNotifications(
+  userId: string
+): Promise<number> {
+  const result = await Notification.deleteMany({ userId, isRead: true });
+  return result.deletedCount;
+}
+
+export async function deleteManyUserNotifications(
+  userId: string,
+  ids: string[]
+): Promise<number> {
+  const result = await Notification.deleteMany({
+    _id: { $in: ids },
+    userId,
+    isRead: true,
+  });
+  return result.deletedCount;
 }
 
 export async function saveUserPushToken(
