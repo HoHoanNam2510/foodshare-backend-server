@@ -106,6 +106,7 @@ export async function createP2PRequest(params: {
     quantity,
     status: 'PENDING',
     paymentMethod: 'FREE',
+    postSnapshot: { title: post.title },
   });
 }
 
@@ -427,6 +428,7 @@ export async function createB2COrder(params: {
     totalAmount: finalAmount,
     status: 'PENDING',
     paymentMethod: 'BANK_TRANSFER',
+    postSnapshot: { title: updatedPost.title },
     ...(voucherSnapshot && { voucherSnapshot }),
   });
 

@@ -10,6 +10,9 @@ export interface ITransaction extends Document {
   paymentMethod: 'FREE' | 'BANK_TRANSFER';
   totalAmount?: number;
   verificationCode?: string;
+  postSnapshot?: {
+    title: string;
+  };
   bankSnapshot?: {
     bankName?: string;
     bankAccountNumber: string;
@@ -64,6 +67,11 @@ const TransactionSchema = new Schema<ITransaction>(
 
     // Tổng tiền thanh toán (price * quantity) — lưu snapshot tại thời điểm đặt hàng
     totalAmount: { type: Number, min: 0 },
+
+    // Snapshot tiêu đề bài đăng — dùng khi post bị xóa vĩnh viễn
+    postSnapshot: {
+      title: { type: String },
+    },
 
     // Mã xác minh QR (P2P) / mã nội dung chuyển khoản (B2C) — sparse để tránh lỗi unique khi null
     verificationCode: { type: String, unique: true, sparse: true },

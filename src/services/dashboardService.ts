@@ -407,7 +407,7 @@ export async function getRecentTransactions(
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
     Transaction.find()
-      .select('type status paymentMethod totalAmount quantity createdAt')
+      .select('type status paymentMethod totalAmount quantity createdAt postSnapshot')
       .populate('requesterId', 'fullName avatar')
       .populate('ownerId', 'fullName avatar')
       .populate('postId', 'title')
