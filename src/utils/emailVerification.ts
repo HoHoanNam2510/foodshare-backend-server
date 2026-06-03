@@ -23,6 +23,42 @@ function getSmtpConfig() {
   return { host, port, secure, user, pass, from };
 }
 
+export async function sendPasswordResetEmail({
+  email,
+  code,
+  expiresInMinutes,
+}: SendVerificationEmailParams): Promise<void> {
+  const smtpConfig = getSmtpConfig();
+
+  const transporter = nodemailer.createTransport({
+    host: smtpConfig.host,
+    port: smtpConfig.port,
+    secure: smtpConfig.secure,
+    auth: {
+      user: smtpConfig.user,
+      pass: smtpConfig.pass,
+    },
+  });
+
+  await transporter.sendMail({
+    from: smtpConfig.from,
+    to: email,
+    subject: 'FoodShare - Dat lai mat khau',
+    text: `Ma dat lai mat khau cua ban la ${code}. Ma co hieu luc trong ${expiresInMinutes} phut. Khong chia se ma nay voi bat ky ai.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+        <h2 style="color: #296C24; margin-bottom: 16px;">FoodShare - Dat lai mat khau</h2>
+        <p>Ban da yeu cau dat lai mat khau. Ma xac minh cua ban la:</p>
+        <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #296C24; background: #F0F9F0; padding: 16px; border-radius: 8px; text-align: center; margin: 16px 0;">
+          ${code}
+        </div>
+        <p>Ma co hieu luc trong <strong>${expiresInMinutes} phut</strong>.</p>
+        <p style="color: #888; font-size: 12px;">Neu ban khong yeu cau dat lai mat khau, hay bo qua email nay. Khong chia se ma nay voi bat ky ai.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendVerificationEmail({
   email,
   code,

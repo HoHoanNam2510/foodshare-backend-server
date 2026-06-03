@@ -101,3 +101,18 @@ export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Mật khẩu hiện tại là bắt buộc'),
   newPassword: z.string().min(6, 'Mật khẩu mới tối thiểu 6 ký tự'),
 });
+
+export const forgotPasswordSendCodeSchema = z.object({
+  email: z.string().email('Email không hợp lệ'),
+});
+
+export const forgotPasswordVerifyCodeSchema = z.object({
+  email: z.string().email('Email không hợp lệ'),
+  code: z.string().regex(/^\d{6}$/, 'Mã xác minh phải gồm đúng 6 chữ số'),
+});
+
+export const forgotPasswordResetSchema = z.object({
+  email: z.string().email('Email không hợp lệ'),
+  code: z.string().regex(/^\d{6}$/, 'Mã xác minh phải gồm đúng 6 chữ số'),
+  newPassword: z.string().min(6, 'Mật khẩu mới tối thiểu 6 ký tự'),
+});

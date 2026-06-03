@@ -16,6 +16,9 @@ import {
   resubmitKyc,
   deleteMyAccount,
   getMyImpact,
+  forgotPasswordSendCode,
+  forgotPasswordVerifyCode,
+  forgotPasswordReset,
 } from '../controllers/authController';
 import {
   getMyTrash,
@@ -44,6 +47,9 @@ import {
   updateLocationSchema,
   registerStoreSchema,
   kycResubmitSchema,
+  forgotPasswordSendCodeSchema,
+  forgotPasswordVerifyCodeSchema,
+  forgotPasswordResetSchema,
 } from '../validations/authValidation';
 
 const router = Router();
@@ -124,6 +130,27 @@ router.post(
   verifyAuth,
   validateBody(kycResubmitSchema),
   resubmitKyc
+);
+
+// [POST] /api/auth/forgot-password/send-code
+router.post(
+  '/forgot-password/send-code',
+  validateBody(forgotPasswordSendCodeSchema),
+  forgotPasswordSendCode
+);
+
+// [POST] /api/auth/forgot-password/verify-code
+router.post(
+  '/forgot-password/verify-code',
+  validateBody(forgotPasswordVerifyCodeSchema),
+  forgotPasswordVerifyCode
+);
+
+// [POST] /api/auth/forgot-password/reset
+router.post(
+  '/forgot-password/reset',
+  validateBody(forgotPasswordResetSchema),
+  forgotPasswordReset
 );
 
 // [POST] /api/auth/logout

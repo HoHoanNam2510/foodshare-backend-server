@@ -1,8 +1,13 @@
+import { randomInt } from 'crypto';
 import User from '@/models/User';
 import PendingRegistration from '@/models/PendingRegistration';
+import PasswordResetToken from '@/models/PasswordResetToken';
 import { hashPassword, comparePassword, generateToken } from '@/utils/auth';
 import { verifyGoogleIdToken } from '@/utils/googleAuth';
-import { sendVerificationEmail } from '@/utils/emailVerification';
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from '@/utils/emailVerification';
 import { deleteImageByUrl } from '@/services/uploadService';
 
 const CODE_LENGTH = 6;
@@ -23,7 +28,7 @@ export class AuthServiceError extends Error {
 function generateNumericCode(length: number): string {
   let code = '';
   for (let i = 0; i < length; i += 1) {
-    code += Math.floor(Math.random() * 10).toString();
+    code += randomInt(0, 10).toString();
   }
   return code;
 }
@@ -576,4 +581,110 @@ export async function changeUserPassword(params: {
 
   user.password = await hashPassword(newPassword);
   await user.save();
+}
+
+// =============================================
+// FORGOT PASSWORD
+// =============================================
+
+export async function initiateForgotPassword(
+  email: string
+): Promise<{ expiresInMinutes: number }> {
+  const normalizedEmail = email.toLowerCase();
+
+  const user = await User.findOne({ email: normalizedEmail });
+
+  if (!user) {
+    throw new AuthServiceError(
+      'Email này chưa được đăng ký. Vui lòng tạo tài khoản mới.',
+      404,
+      'EMAIL_NOT_FOUND'
+    );
+  }
+
+  if (user.authProvider === 'GOOGLE' && !user.password) {
+    throw new AuthServiceError(
+      'Tài khoản này đăng nhập bằng Google. Vui lòng đăng nhập bằng Google.',
+      400,
+      'GOOGLE_ACCOUNT'
+    );
+  }
+
+  const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+  const recentCount = await PasswordResetToken.countDocuments({
+    email: normalizedEmail,
+    createdAt: { $gte: oneMinuteAgo },
+  });
+
+  if (recentCount >= MAX_SEND_PER_MINUTE) {
+    throw new AuthServiceError(
+      'Bạn đã gửi mã quá nhiều lần. Vui lòng thử lại sau khoảng 1 phút',
+      429
+    );
+  }
+
+  const code = generateNumericCode(CODE_LENGTH);
+  const expiresAt = new Date(Date.now() + CODE_EXPIRE_MINUTES * 60 * 1000);
+
+  await PasswordResetToken.deleteMany({ email: normalizedEmail });
+
+  const resetToken = await PasswordResetToken.create({
+    email: normalizedEmail,
+    code,
+    expiresAt,
+  });
+
+  try {
+    await sendPasswordResetEmail({
+      email: normalizedEmail,
+      code,
+      expiresInMinutes: CODE_EXPIRE_MINUTES,
+    });
+  } catch (sendError) {
+    await PasswordResetToken.findByIdAndDelete(resetToken._id);
+    throw sendError;
+  }
+
+  return { expiresInMinutes: CODE_EXPIRE_MINUTES };
+}
+
+export async function verifyForgotPasswordCode(
+  email: string,
+  code: string
+): Promise<boolean> {
+  const normalizedEmail = email.toLowerCase();
+  const token = await PasswordResetToken.findOne({
+    email: normalizedEmail,
+    code,
+    expiresAt: { $gt: new Date() },
+  });
+  return Boolean(token);
+}
+
+export async function resetPasswordWithCode(params: {
+  email: string;
+  code: string;
+  newPassword: string;
+}): Promise<void> {
+  const normalizedEmail = params.email.toLowerCase();
+
+  const token = await PasswordResetToken.findOne({
+    email: normalizedEmail,
+    code: params.code,
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!token) {
+    throw new AuthServiceError('Mã xác minh không hợp lệ hoặc đã hết hạn', 400);
+  }
+
+  const user = await User.findOne({ email: normalizedEmail }).select(
+    '+password'
+  );
+  if (!user) throw new AuthServiceError('Tài khoản không tồn tại', 404);
+
+  user.password = await hashPassword(params.newPassword);
+  await user.save();
+
+  await PasswordResetToken.deleteMany({ email: normalizedEmail });
 }

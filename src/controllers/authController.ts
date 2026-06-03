@@ -14,6 +14,9 @@ import {
   resubmitKycDocuments,
   setGooglePassword,
   changeUserPassword,
+  initiateForgotPassword,
+  verifyForgotPasswordCode,
+  resetPasswordWithCode,
 } from '@/services/authService';
 import { softDeleteUser, SoftDeleteError } from '@/services/softDeleteService';
 import { checkAndAwardBadges } from '@/services/badgeService';
@@ -589,5 +592,82 @@ export const getMyImpact = async (
     res
       .status(500)
       .json({ success: false, message: 'Lỗi server', error: errorMessage });
+  }
+};
+
+// =============================================
+// FORGOT PASSWORD CONTROLLERS
+// =============================================
+
+export const forgotPasswordSendCode = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email } = req.body;
+    const result = await initiateForgotPassword(email);
+    res.status(200).json({
+      success: true,
+      message: 'Đã gửi mã xác minh đến email của bạn',
+      data: result,
+    });
+  } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+        errorCode: error.errorCode,
+      });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi gửi mã xác minh',
+    });
+  }
+};
+
+export const forgotPasswordVerifyCode = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email, code } = req.body;
+    const valid = await verifyForgotPasswordCode(email, code);
+    if (!valid) {
+      res.status(400).json({
+        success: false,
+        message: 'Mã xác minh không hợp lệ hoặc đã hết hạn',
+      });
+      return;
+    }
+    res.status(200).json({ success: true, message: 'Mã xác minh hợp lệ' });
+  } catch {
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
+export const forgotPasswordReset = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { email, code, newPassword } = req.body;
+    await resetPasswordWithCode({ email, code, newPassword });
+    res.status(200).json({
+      success: true,
+      message: 'Mật khẩu đã được đặt lại thành công',
+    });
+  } catch (error: unknown) {
+    if (error instanceof AuthServiceError) {
+      res
+        .status(error.statusCode)
+        .json({ success: false, message: error.message });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi đặt lại mật khẩu',
+    });
   }
 };
