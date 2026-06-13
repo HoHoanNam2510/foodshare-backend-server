@@ -88,6 +88,7 @@ export const updateProfileSchema = z.object({
     })
     .optional(),
   paymentInfo: paymentInfoSchema.optional(),
+  language: z.enum(['vi', 'en']).optional(),
 });
 
 export const kycResubmitSchema = z.object({

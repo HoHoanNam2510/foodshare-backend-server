@@ -15,6 +15,11 @@ export interface IMessage extends Document, ISoftDelete {
   };
   relatedPostId?: mongoose.Types.ObjectId;
   isRead: boolean;
+  isEdited: boolean;
+  editedAt?: Date;
+  isRecalled: boolean;
+  recalledAt?: Date;
+  deletedFor: mongoose.Types.ObjectId[];
   createdAt: Date;
 }
 
@@ -57,8 +62,28 @@ const MessageSchema = new Schema<IMessage>(
       type: Boolean,
       default: false,
     },
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+      default: undefined,
+    },
+    isRecalled: {
+      type: Boolean,
+      default: false,
+    },
+    recalledAt: {
+      type: Date,
+      default: undefined,
+    },
+    deletedFor: {
+      type: [Schema.Types.ObjectId],
+      default: [],
+    },
   },
-  { timestamps: { updatedAt: false } } // Tắt updatedAt vì tin nhắn thường không sửa
+  { timestamps: { updatedAt: false } }
 );
 
 MessageSchema.plugin(softDeletePlugin);

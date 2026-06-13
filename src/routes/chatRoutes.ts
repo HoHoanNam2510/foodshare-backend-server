@@ -6,15 +6,21 @@ import {
   getMessagesInConversation,
   markAsRead,
   deleteConversation,
+  editMessage,
+  recallMessage,
+  deleteMessageForMe,
   adminGetConversations,
   adminGetMessagesDetail,
   adminToggleLockConversation,
 } from '../controllers/chatController';
 import { verifyAuth, verifyAdmin } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validateBodyMiddleware';
+import { validateQuery } from '../middlewares/validateRequestMiddleware';
 import {
   getOrCreateConversationSchema,
   sendMessageSchema,
+  editMessageSchema,
+  adminGetConversationsSchema,
 } from '../validations/chatValidation';
 
 const router = Router();
@@ -30,6 +36,7 @@ router.get(
   '/admin/conversations',
   verifyAuth,
   verifyAdmin,
+  validateQuery(adminGetConversationsSchema),
   adminGetConversations
 );
 
@@ -92,5 +99,22 @@ router.post(
   validateBody(sendMessageSchema),
   sendMessage
 );
+
+// [PATCH] /api/chat/messages/:messageId
+// (Sửa nội dung tin nhắn TEXT — không giới hạn thời gian, chỉ tin của chính mình)
+router.patch(
+  '/messages/:messageId',
+  verifyAuth,
+  validateBody(editMessageSchema),
+  editMessage
+);
+
+// [POST] /api/chat/messages/:messageId/recall
+// (Thu hồi tin nhắn — không giới hạn thời gian, chỉ tin của chính mình)
+router.post('/messages/:messageId/recall', verifyAuth, recallMessage);
+
+// [DELETE] /api/chat/messages/:messageId
+// (Xóa tin nhắn chỉ ở phía người dùng hiện tại)
+router.delete('/messages/:messageId', verifyAuth, deleteMessageForMe);
 
 export default router;

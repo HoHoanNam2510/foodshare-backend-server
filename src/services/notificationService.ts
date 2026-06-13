@@ -14,7 +14,8 @@ type NotificationType =
   | 'RADAR'
   | 'SYSTEM'
   | 'VOUCHER'
-  | 'FEEDBACK';
+  | 'FEEDBACK'
+  | 'CHAT';
 type BroadcastTargetRole = 'ALL' | 'USER' | 'STORE' | 'ADMIN';
 
 let io: Server | null = null;

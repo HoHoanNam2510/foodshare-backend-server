@@ -2,14 +2,17 @@ import User from '@/models/User';
 import Post from '@/models/Post';
 import Transaction from '@/models/Transaction';
 import Report from '@/models/Report';
-import mongoose from 'mongoose';
 
 // ─── Types ───────────────────────────────────────────────────
 
 export type TimeRange = 'day' | 'week' | 'month';
 
 type AggregateDoc = { _id: unknown; total: number };
-type AnyMongooseModel = mongoose.Model<mongoose.Document>;
+type AnyMongooseModel =
+  | typeof User
+  | typeof Post
+  | typeof Transaction
+  | typeof Report;
 
 interface ChartPoint {
   name: string;
@@ -407,7 +410,9 @@ export async function getRecentTransactions(
   const sort = sortOrder === 'asc' ? 1 : -1;
   const [data, total] = await Promise.all([
     Transaction.find()
-      .select('type status paymentMethod totalAmount quantity createdAt postSnapshot')
+      .select(
+        'type status paymentMethod totalAmount quantity createdAt postSnapshot'
+      )
       .populate('requesterId', 'fullName avatar')
       .populate('ownerId', 'fullName avatar')
       .populate('postId', 'title')

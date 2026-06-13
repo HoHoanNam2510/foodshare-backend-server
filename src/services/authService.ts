@@ -360,6 +360,7 @@ export async function updateUserProfile(params: {
     avatar?: string;
     storeInfo?: unknown;
     paymentInfo?: unknown;
+    language?: 'vi' | 'en';
   };
 }): Promise<Record<string, unknown>> {
   const { userId, updates } = params;
@@ -387,6 +388,7 @@ export async function updateUserProfile(params: {
   if (updates.storeInfo !== undefined) updateData.storeInfo = updates.storeInfo;
   if (updates.paymentInfo !== undefined)
     updateData.paymentInfo = updates.paymentInfo;
+  if (updates.language !== undefined) updateData.language = updates.language;
 
   const mergedPhone =
     updates.phoneNumber !== undefined

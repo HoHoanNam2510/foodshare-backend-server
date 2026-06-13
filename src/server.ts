@@ -36,9 +36,11 @@ import feedbackRoutes from './routes/feedbackRoutes';
 import categoryRoutes from './routes/categoryRoutes';
 import postTemplateRoutes from './routes/postTemplateRoutes';
 import { seedCategories } from './seeds/categorySeeder';
+import User from './models/User';
 import logger from './utils/logger';
 import { startScheduler } from './utils/scheduler';
 import { initNotificationService } from './services/notificationService';
+import { onlineUsers } from './utils/presenceStore';
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -169,11 +171,41 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   logger.info(`🔌 Socket kết nối: ${socket.id}`);
 
+  const userId = socket.data.userId as string | undefined;
+
   // Auto-join personal notification room nếu đã xác thực
-  if (socket.data.userId) {
-    socket.join(`user:${socket.data.userId}`);
-    logger.info(`Socket ${socket.id} đã join room: user:${socket.data.userId}`);
+  if (userId) {
+    socket.join(`user:${userId}`);
+    logger.info(`Socket ${socket.id} đã join room: user:${userId}`);
+
+    // Cập nhật presence: thêm socket vào Set; nếu trước đó offline → báo online
+    let sockets = onlineUsers.get(userId);
+    if (!sockets) {
+      sockets = new Set();
+      onlineUsers.set(userId, sockets);
+    }
+    const wasOffline = sockets.size === 0;
+    sockets.add(socket.id);
+    if (wasOffline) {
+      io.to(`presence:${userId}`).emit('presence:update', {
+        userId,
+        online: true,
+      });
+    }
   }
+
+  // Client theo dõi trạng thái online của 1 user (khi mở màn hình chat)
+  socket.on('subscribe-presence', (targetUserId: string) => {
+    if (!targetUserId) return;
+    socket.join(`presence:${targetUserId}`);
+    const online = (onlineUsers.get(targetUserId)?.size ?? 0) > 0;
+    socket.emit('presence:update', { userId: targetUserId, online });
+  });
+
+  // Client ngừng theo dõi (rời màn hình chat)
+  socket.on('unsubscribe-presence', (targetUserId: string) => {
+    socket.leave(`presence:${targetUserId}`);
+  });
 
   // Client tham gia phòng chat
   socket.on('join-room', (conversationId: string) => {
@@ -196,7 +228,46 @@ io.on('connection', (socket) => {
     }
   );
 
-  socket.on('disconnect', () => {
+  // Client relay sau khi sửa tin nhắn thành công qua REST API
+  socket.on(
+    'client-message-update',
+    (data: { conversationId: string; message: unknown }) => {
+      io.to(data.conversationId).emit('message:updated', data.message);
+    }
+  );
+
+  // Client relay sau khi thu hồi tin nhắn thành công qua REST API
+  socket.on(
+    'client-message-recall',
+    (data: { conversationId: string; messageId: string }) => {
+      io.to(data.conversationId).emit('message:recalled', {
+        messageId: data.messageId,
+      });
+    }
+  );
+
+  socket.on('disconnect', async () => {
     logger.info(`❌ Socket ngắt kết nối: ${socket.id}`);
+
+    if (!userId) return;
+    const sockets = onlineUsers.get(userId);
+    if (!sockets) return;
+    sockets.delete(socket.id);
+
+    // Chỉ báo offline khi user không còn socket nào kết nối
+    if (sockets.size === 0) {
+      onlineUsers.delete(userId);
+      const lastSeen = new Date();
+      io.to(`presence:${userId}`).emit('presence:update', {
+        userId,
+        online: false,
+        lastSeen,
+      });
+      try {
+        await User.findByIdAndUpdate(userId, { lastSeen });
+      } catch (err) {
+        logger.error(`Không thể cập nhật lastSeen cho user ${userId}`, err);
+      }
+    }
   });
 });

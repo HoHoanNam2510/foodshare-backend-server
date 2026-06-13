@@ -324,6 +324,7 @@ export const updateProfile = async (
       avatar,
       storeInfo,
       paymentInfo,
+      language,
     } = req.body;
     const user = await updateUserProfile({
       userId,
@@ -334,6 +335,7 @@ export const updateProfile = async (
         avatar,
         storeInfo,
         paymentInfo,
+        language,
       },
     });
 

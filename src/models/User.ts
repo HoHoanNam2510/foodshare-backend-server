@@ -40,6 +40,10 @@ export interface IUser extends Document, ISoftDelete {
   greenPoints: number;
   averageRating: number;
   expoPushToken?: string;
+  /** Ngôn ngữ ưa thích của user (vi | en) — dùng cho push notification */
+  language?: 'vi' | 'en';
+  /** Thời điểm user online lần cuối — cập nhật khi socket ngắt kết nối hoàn toàn */
+  lastSeen?: Date;
   /** PENDING_KYC: user đã nộp hồ sơ cửa hàng, đang chờ admin xét duyệt */
   status: 'ACTIVE' | 'BANNED' | 'PENDING_KYC';
   createdAt: Date;
@@ -130,6 +134,8 @@ const UserSchema = new Schema<IUser>(
     greenPoints: { type: Number, default: 0 },
     averageRating: { type: Number, default: 5.0 },
     expoPushToken: { type: String, default: null },
+    language: { type: String, enum: ['vi', 'en'], default: 'vi' },
+    lastSeen: { type: Date, default: null },
     status: {
       type: String,
       enum: ['ACTIVE', 'BANNED', 'PENDING_KYC'],

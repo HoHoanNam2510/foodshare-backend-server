@@ -11,6 +11,9 @@ import {
   getMyConversations as getMyConversationsService,
   getMessagesInConversation as getMessagesInConversationService,
   markAsRead as markAsReadService,
+  editMessage as editMessageService,
+  recallMessage as recallMessageService,
+  deleteMessageForMe as deleteMessageForMeService,
   adminGetConversations as adminGetConversationsService,
   adminGetMessagesDetail as adminGetMessagesDetailService,
   adminToggleLockConversation as adminToggleLockConversationService,
@@ -22,6 +25,7 @@ function handleChatError(error: unknown, res: Response): void {
     res.status(error.statusCode).json({
       success: false,
       message: error.message,
+      ...(error.errorCode && { errorCode: error.errorCode }),
     });
     return;
   }
@@ -213,6 +217,92 @@ export const markAsRead = async (
       success: true,
       message: 'Đã đánh dấu đọc thành công',
     });
+  } catch (error) {
+    handleChatError(error, res);
+  }
+};
+
+/**
+ * [PATCH] /api/chat/messages/:messageId
+ * Sửa nội dung tin nhắn TEXT trong vòng 15 phút.
+ */
+export const editMessage = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập' });
+      return;
+    }
+
+    const messageId = Array.isArray(req.params.messageId)
+      ? req.params.messageId[0]
+      : req.params.messageId;
+
+    const { text } = req.body as { text: string };
+    const message = await editMessageService(userId, messageId, text);
+
+    res.status(200).json({ success: true, data: message });
+  } catch (error) {
+    handleChatError(error, res);
+  }
+};
+
+/**
+ * [POST] /api/chat/messages/:messageId/recall
+ * Thu hồi tin nhắn trong vòng 15 phút.
+ */
+export const recallMessage = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập' });
+      return;
+    }
+
+    const messageId = Array.isArray(req.params.messageId)
+      ? req.params.messageId[0]
+      : req.params.messageId;
+
+    const message = await recallMessageService(userId, messageId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Tin nhắn đã được thu hồi',
+      data: message,
+    });
+  } catch (error) {
+    handleChatError(error, res);
+  }
+};
+
+/**
+ * [DELETE] /api/chat/messages/:messageId
+ * Xóa tin nhắn chỉ ở phía người dùng hiện tại.
+ */
+export const deleteMessageForMe = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Bạn cần đăng nhập' });
+      return;
+    }
+
+    const messageId = Array.isArray(req.params.messageId)
+      ? req.params.messageId[0]
+      : req.params.messageId;
+
+    await deleteMessageForMeService(userId, messageId);
+
+    res.status(200).json({ success: true, message: 'Đã xóa tin nhắn' });
   } catch (error) {
     handleChatError(error, res);
   }

@@ -31,6 +31,12 @@ export const sendMessageSchema = z
 
 export type SendMessageBody = z.infer<typeof sendMessageSchema>;
 
+export const editMessageSchema = z.object({
+  text: z.string().min(1, 'Nội dung không được để trống'),
+});
+
+export type EditMessageBody = z.infer<typeof editMessageSchema>;
+
 // =============================================
 // II. VALIDATION CHO ADMIN
 // =============================================
