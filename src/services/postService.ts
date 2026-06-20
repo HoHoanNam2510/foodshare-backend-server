@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import OpenAI from 'openai';
 import mongoose from 'mongoose';
 import logger from '@/utils/logger';
@@ -454,10 +455,14 @@ export class PostServiceError extends Error {
   }
 }
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function generateNumericPasscode(length: number): string {
   let passcode = '';
   for (let i = 0; i < length; i += 1) {
-    passcode += Math.floor(Math.random() * 10).toString();
+    passcode += randomInt(0, 10).toString();
   }
   return passcode;
 }
@@ -656,7 +661,7 @@ export async function getAvailablePosts(
   }
 
   const filter: Record<string, unknown> = { ...baseFilter };
-  if (search) filter.title = { $regex: search, $options: 'i' };
+  if (search) filter.title = { $regex: escapeRegex(search), $options: 'i' };
   if (categoryId) filter.category = categoryId;
 
   const sortOption: Record<string, 1 | -1> =
@@ -715,19 +720,27 @@ export async function getBookmarks(
   limit: number
 ): Promise<PaginatedPosts> {
   const skip = (page - 1) * limit;
-  const user = await User.findById(userId).select('savedPosts').lean();
-  if (!user || !('savedPosts' in user) || !Array.isArray(user.savedPosts)) {
+
+  const [row] = await User.aggregate<{
+    total: number;
+    pagedIds: mongoose.Types.ObjectId[];
+  }>([
+    { $match: { _id: new mongoose.Types.ObjectId(userId) } },
+    {
+      $project: {
+        total: { $size: { $ifNull: ['$savedPosts', []] } },
+        pagedIds: { $slice: [{ $ifNull: ['$savedPosts', []] }, skip, limit] },
+      },
+    },
+  ]);
+
+  if (!row || row.total === 0) {
     return { posts: [], pagination: { page, limit, total: 0, totalPages: 0 } };
   }
 
-  const savedIds = user.savedPosts as mongoose.Types.ObjectId[];
-  const total = savedIds.length;
-
-  const posts = await Post.find({ _id: { $in: savedIds } })
+  const posts = await Post.find({ _id: { $in: row.pagedIds } })
     .populate('ownerId', 'fullName avatar averageRating')
     .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
     .lean();
 
   return {
@@ -735,8 +748,8 @@ export async function getBookmarks(
     pagination: {
       page,
       limit,
-      total,
-      totalPages: Math.ceil(total / limit) || 0,
+      total: row.total,
+      totalPages: Math.ceil(row.total / limit) || 0,
     },
   };
 }

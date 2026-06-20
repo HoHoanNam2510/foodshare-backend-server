@@ -100,6 +100,9 @@ TransactionSchema.index({ requesterId: 1, status: 1, createdAt: -1 });
 // 2. Dùng khi chủ post/store xem "Danh sách ai đang xin/mua bài đăng này"
 TransactionSchema.index({ ownerId: 1, status: 1, createdAt: -1 });
 
+// 3. Dùng khi lookup tất cả transaction theo postId (admin + store analytics)
+TransactionSchema.index({ postId: 1, status: 1 });
+
 const Transaction: Model<ITransaction> =
   mongoose.models.Transaction ||
   mongoose.model<ITransaction>('Transaction', TransactionSchema);

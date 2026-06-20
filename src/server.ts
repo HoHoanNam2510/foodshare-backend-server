@@ -63,8 +63,8 @@ const MONGODB_URI = process.env.MONGODB_URI as string;
 
 // Middlewares cơ bản
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // HTTP request logging
 app.use(
@@ -77,6 +77,18 @@ app.use(
 app.get('/', (req: Request, res: Response) => {
   res.json({
     message: 'Chào mừng đến với API FoodShare Backend (Express + TypeScript)!',
+  });
+});
+
+// Health check — dùng cho load balancer / container orchestration
+app.get('/health', (_req: Request, res: Response) => {
+  const dbState = mongoose.connection.readyState;
+  const status = dbState === 1 ? 'ok' : 'degraded';
+  res.status(dbState === 1 ? 200 : 503).json({
+    status,
+    uptime: process.uptime(),
+    db: dbState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -115,6 +127,15 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
         ? 'Đã xảy ra lỗi từ phía server'
         : err.message,
   });
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+  logger.error('[Process] Unhandled Promise Rejection:', { reason });
+});
+
+process.on('uncaughtException', (error: Error) => {
+  logger.error('[Process] Uncaught Exception — shutting down:', { error });
+  process.exit(1);
 });
 
 // Kết nối MongoDB và Khởi động Server
@@ -271,3 +292,22 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+// Graceful shutdown — đảm bảo in-flight requests hoàn thành trước khi tắt server
+const gracefulShutdown = (signal: string) => {
+  logger.info(`[Server] ${signal} received — shutting down gracefully`);
+  httpServer.close(async () => {
+    logger.info('[Server] HTTP server closed');
+    await mongoose.connection.close();
+    logger.info('[Server] MongoDB connection closed');
+    process.exit(0);
+  });
+  // Force exit sau 10 giây nếu server không close được
+  setTimeout(() => {
+    logger.error('[Server] Graceful shutdown timed out — forcing exit');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import User from '@/models/User';
 import EmailVerificationCode from '@/models/EmailVerificationCode';
 import { sendVerificationEmail } from '@/utils/emailVerification';
@@ -9,7 +10,7 @@ const MAX_SEND_PER_MINUTE = 3;
 function generateNumericCode(length: number): string {
   let code = '';
   for (let i = 0; i < length; i += 1) {
-    code += Math.floor(Math.random() * 10).toString();
+    code += randomInt(0, 10).toString();
   }
   return code;
 }

@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 
 import User, { IUser } from '@/models/User';
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 import Transaction from '@/models/Transaction';
 import Post from '@/models/Post';
 import { hashPassword } from '@/utils/auth';
@@ -97,7 +101,7 @@ function buildUserFilter(query: UserListQuery): Record<string, unknown> {
   }
 
   if (query.search?.trim()) {
-    const regex = new RegExp(query.search.trim(), 'i');
+    const regex = new RegExp(escapeRegex(query.search.trim()), 'i');
     filters.$or = [
       { fullName: regex },
       { email: regex },

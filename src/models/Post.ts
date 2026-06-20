@@ -117,6 +117,18 @@ PostSchema.index({ location: '2dsphere' });
 // 2. Index cho việc query các bài đăng đang available của 1 user (Tối ưu tốc độ load danh sách)
 PostSchema.index({ ownerId: 1, status: 1 });
 
+// 3. Index cho filter status (getAvailablePosts, explore)
+PostSchema.index({ status: 1 });
+
+// 4. Index cho expire job (cron query tìm bài sắp hết hạn)
+PostSchema.index({ expiryDate: 1 });
+
+// 5. Index cho search + filter theo category
+PostSchema.index({ category: 1, status: 1 });
+
+// 6. Index cho sort mặc định theo thời gian tạo
+PostSchema.index({ createdAt: -1 });
+
 // Middleware (Hook) trước khi lưu: Tự động chuyển status sang OUT_OF_STOCK nếu hết hàng
 PostSchema.pre('save', function (this: IPost) {
   if (this.remainingQuantity === 0 && this.status === 'AVAILABLE') {

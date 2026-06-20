@@ -133,11 +133,19 @@ export async function updateOrCancelRequest(params: {
 
   if (action === 'DELETE') {
     if (transaction.type === 'ORDER') {
-      const post = await Post.findById(transaction.postId);
-      if (post) {
-        post.remainingQuantity += transaction.quantity;
-        if (post.status === 'OUT_OF_STOCK') post.status = 'AVAILABLE';
-        await post.save();
+      const updated = await Post.findByIdAndUpdate(
+        transaction.postId,
+        { $inc: { remainingQuantity: transaction.quantity } },
+        { new: true }
+      );
+      if (
+        updated &&
+        updated.remainingQuantity > 0 &&
+        updated.status === 'OUT_OF_STOCK'
+      ) {
+        await Post.findByIdAndUpdate(transaction.postId, {
+          status: 'AVAILABLE',
+        });
       }
       await _rollbackVoucherForTransaction(
         transaction._id as mongoose.Types.ObjectId

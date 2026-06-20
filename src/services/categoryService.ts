@@ -1,25 +1,27 @@
 import Category, { ICategory } from '@/models/Category';
+import { cache } from '@/utils/cache';
 
 // =============================================
 // I. NHÓM SERVICE DÀNH CHO PUBLIC
 // =============================================
 
-/**
- * CAT_P01: Lấy danh sách category đang active, sort theo sortOrder.
- * Dùng cho FilterPills trên Home Screen.
- */
 export async function getActiveCategories(
   applyTo?: string
 ): Promise<ICategory[]> {
-  const filter: Record<string, unknown> = { isActive: true };
+  const cacheKey = `categories:${applyTo ?? 'all'}`;
+  const cached = cache.get<ICategory[]>(cacheKey);
+  if (cached) return cached;
 
+  const filter: Record<string, unknown> = { isActive: true };
   if (applyTo && ['P2P_FREE', 'B2C_MYSTERY_BAG'].includes(applyTo)) {
     filter.applyTo = { $in: [applyTo, 'BOTH'] };
   }
 
-  return Category.find(filter).sort({ sortOrder: 1 }).lean() as Promise<
-    ICategory[]
-  >;
+  const data = (await Category.find(filter)
+    .sort({ sortOrder: 1 })
+    .lean()) as ICategory[];
+  cache.set(cacheKey, data);
+  return data;
 }
 
 // =============================================
@@ -109,13 +111,15 @@ export async function adminUpdateCategory(
   }
 
   Object.assign(category, updates);
-  return category.save() as unknown as ICategory;
+  const saved = (await category.save()) as unknown as ICategory;
+  cache.del([
+    'categories:all',
+    'categories:P2P_FREE',
+    'categories:B2C_MYSTERY_BAG',
+  ]);
+  return saved;
 }
 
-/**
- * CAT_A04: Admin xóa mềm category (set isActive = false).
- * Category hệ thống (isSystem = true) không được xóa.
- */
 export async function adminDeleteCategory(categoryId: string): Promise<void> {
   const category = await Category.findById(categoryId);
   if (!category) {
@@ -132,4 +136,9 @@ export async function adminDeleteCategory(categoryId: string): Promise<void> {
 
   category.isActive = false;
   await category.save();
+  cache.del([
+    'categories:all',
+    'categories:P2P_FREE',
+    'categories:B2C_MYSTERY_BAG',
+  ]);
 }

@@ -9,6 +9,15 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   clearMocks: true,
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/seeds/**',
+    '!src/__tests__/**',
+    '!src/server.ts',
+  ],
+  coverageThreshold: {
+    global: { branches: 40, lines: 50, functions: 50 },
+  },
 };
 
 export default config;

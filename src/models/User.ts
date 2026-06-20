@@ -150,6 +150,12 @@ UserSchema.plugin(softDeletePlugin);
 // Quan trọng: Đánh index 2dsphere để query bản đồ theo bán kính
 UserSchema.index({ location: '2dsphere' });
 
+// Index cho admin user list (filter theo role + status)
+UserSchema.index({ role: 1, status: 1 });
+
+// Index cho KYC review queue
+UserSchema.index({ 'storeInfo.kycStatus': 1 });
+
 // Tránh lỗi overwrite model trong Next.js khi hot-reload
 const User: Model<IUser> =
   mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

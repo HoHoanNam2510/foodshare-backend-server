@@ -33,6 +33,7 @@ import {
 } from '../controllers/emailVerificationController';
 import { verifyAuth } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validateBodyMiddleware';
+import { authLimiter, otpLimiter } from '../middlewares/rateLimitMiddleware';
 import {
   registerSchema,
   registerVerifySchema,
@@ -57,6 +58,7 @@ const router = Router();
 // [POST] /api/auth/register/send-code  (Bước 1: validate + gửi mã)
 router.post(
   '/register/send-code',
+  otpLimiter,
   validateBody(registerSchema),
   registerSendCode
 );
@@ -76,7 +78,7 @@ router.post(
 );
 
 // [POST] /api/auth/login
-router.post('/login', validateBody(loginSchema), login);
+router.post('/login', authLimiter, validateBody(loginSchema), login);
 
 // [POST] /api/auth/google-login
 router.post('/google-login', validateBody(googleLoginSchema), googleLogin);
@@ -135,6 +137,7 @@ router.post(
 // [POST] /api/auth/forgot-password/send-code
 router.post(
   '/forgot-password/send-code',
+  otpLimiter,
   validateBody(forgotPasswordSendCodeSchema),
   forgotPasswordSendCode
 );

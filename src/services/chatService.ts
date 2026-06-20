@@ -3,6 +3,7 @@ import Conversation, { IConversation } from '@/models/Conversation';
 import Message, { IMessage, MessageType } from '@/models/Message';
 import User from '@/models/User';
 import { createNotification } from '@/services/notificationService';
+import { deleteImageByUrl } from '@/services/uploadService';
 import { isUserOnline } from '@/utils/presenceStore';
 
 export class ChatServiceError extends Error {
@@ -445,9 +446,20 @@ export async function recallMessage(
     throw new ChatServiceError('Tin nhắn đã bị thu hồi rồi', 400);
   }
 
+  // Thu hồi ẩn tin với cả 2 phía nên ảnh không còn được dùng tới: gỡ imageUrl
+  // khỏi DB và xóa file gốc trên Cloudinary. Giữ lại URL trước khi gỡ để xóa.
+  const recalledImageUrl =
+    message.messageType === 'IMAGE' ? message.imageUrl : undefined;
+
   message.isRecalled = true;
   message.recalledAt = new Date();
+  if (recalledImageUrl) message.imageUrl = undefined;
   await message.save();
+
+  // Mỗi ảnh có publicId riêng → xóa an toàn. Fire-and-forget, không chặn response.
+  if (recalledImageUrl) {
+    deleteImageByUrl(recalledImageUrl).catch(() => {});
+  }
 
   return message;
 }
