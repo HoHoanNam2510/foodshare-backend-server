@@ -94,8 +94,14 @@ export const sendMessage = async (
       return;
     }
 
-    const { conversationId, text, imageUrl, location, relatedPostId } =
-      req.body;
+    const {
+      conversationId,
+      text,
+      imageUrl,
+      location,
+      relatedPostId,
+      relatedTransactionId,
+    } = req.body;
 
     const message = await sendMessageService(senderId, {
       conversationId,
@@ -103,6 +109,7 @@ export const sendMessage = async (
       imageUrl,
       location,
       relatedPostId,
+      relatedTransactionId,
     });
 
     res.status(201).json({

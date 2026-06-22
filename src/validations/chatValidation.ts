@@ -24,10 +24,20 @@ export const sendMessageSchema = z
       })
       .optional(),
     relatedPostId: z.string().optional(),
+    relatedTransactionId: z.string().optional(),
   })
-  .refine((data) => data.text || data.imageUrl || data.location, {
-    message: 'Phải có ít nhất text, imageUrl, hoặc location',
-  });
+  .refine(
+    (data) =>
+      data.text ||
+      data.imageUrl ||
+      data.location ||
+      data.relatedPostId ||
+      data.relatedTransactionId,
+    {
+      message:
+        'Phải có ít nhất text, imageUrl, location, relatedPostId, hoặc relatedTransactionId',
+    }
+  );
 
 export type SendMessageBody = z.infer<typeof sendMessageSchema>;
 

@@ -1,7 +1,12 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import { ISoftDelete, softDeletePlugin } from '@/plugins/softDeletePlugin';
 
-export type MessageType = 'TEXT' | 'IMAGE' | 'LOCATION';
+export type MessageType =
+  | 'TEXT'
+  | 'IMAGE'
+  | 'LOCATION'
+  | 'POST'
+  | 'TRANSACTION';
 
 export interface IMessage extends Document, ISoftDelete {
   conversationId: mongoose.Types.ObjectId;
@@ -14,6 +19,7 @@ export interface IMessage extends Document, ISoftDelete {
     longitude: number;
   };
   relatedPostId?: mongoose.Types.ObjectId;
+  relatedTransactionId?: mongoose.Types.ObjectId;
   isRead: boolean;
   isEdited: boolean;
   editedAt?: Date;
@@ -37,7 +43,7 @@ const MessageSchema = new Schema<IMessage>(
     },
     messageType: {
       type: String,
-      enum: ['TEXT', 'IMAGE', 'LOCATION'],
+      enum: ['TEXT', 'IMAGE', 'LOCATION', 'POST', 'TRANSACTION'],
       default: 'TEXT',
       required: true,
     },
@@ -56,6 +62,11 @@ const MessageSchema = new Schema<IMessage>(
     relatedPostId: {
       type: Schema.Types.ObjectId,
       ref: 'Post',
+      default: undefined,
+    },
+    relatedTransactionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Transaction',
       default: undefined,
     },
     isRead: {

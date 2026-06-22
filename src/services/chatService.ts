@@ -17,6 +17,38 @@ export class ChatServiceError extends Error {
   }
 }
 
+/**
+ * Map message ra shape client mong đợi: refs đã populate `relatedPostId` /
+ * `relatedTransactionId` được phơi ra dưới tên `relatedPost` / `relatedTransaction`.
+ * Bỏ qua khi ref chưa populate (vẫn là ObjectId) để tránh lộ id thô.
+ */
+type SerializedMessage = Record<string, unknown>;
+
+function serializeMessage(
+  msg: IMessage | Record<string, unknown>
+): SerializedMessage {
+  const obj: Record<string, unknown> =
+    typeof (msg as { toObject?: unknown }).toObject === 'function'
+      ? (
+          msg as unknown as { toObject: () => Record<string, unknown> }
+        ).toObject()
+      : { ...(msg as Record<string, unknown>) };
+
+  const post = obj.relatedPostId;
+  if (post && !(post instanceof mongoose.Types.ObjectId)) {
+    obj.relatedPost = post;
+  }
+  delete obj.relatedPostId;
+
+  const txn = obj.relatedTransactionId;
+  if (txn && !(txn instanceof mongoose.Types.ObjectId)) {
+    obj.relatedTransaction = txn;
+  }
+  delete obj.relatedTransactionId;
+
+  return obj;
+}
+
 // =============================================
 // I. NHÓM SERVICE DÀNH CHO USER / STORE
 // =============================================
@@ -78,6 +110,7 @@ interface SendMessageInput {
   imageUrl?: string;
   location?: { latitude: number; longitude: number };
   relatedPostId?: string;
+  relatedTransactionId?: string;
 }
 
 /**
@@ -88,8 +121,15 @@ interface SendMessageInput {
 export async function sendMessage(
   senderId: string,
   data: SendMessageInput
-): Promise<IMessage> {
-  const { conversationId, text, imageUrl, location, relatedPostId } = data;
+): Promise<SerializedMessage> {
+  const {
+    conversationId,
+    text,
+    imageUrl,
+    location,
+    relatedPostId,
+    relatedTransactionId,
+  } = data;
 
   if (!mongoose.Types.ObjectId.isValid(conversationId)) {
     throw new ChatServiceError('conversationId không hợp lệ', 400);
@@ -148,6 +188,12 @@ export async function sendMessage(
   } else if (location) {
     messageType = 'LOCATION';
     content = content || `${location.latitude},${location.longitude}`;
+  } else if (relatedTransactionId) {
+    messageType = 'TRANSACTION';
+    content = content || 'Giao dịch';
+  } else if (relatedPostId) {
+    messageType = 'POST';
+    content = content || 'Bài đăng';
   }
 
   // Tạo Message mới
@@ -165,6 +211,12 @@ export async function sendMessage(
       throw new ChatServiceError('relatedPostId không hợp lệ', 400);
     }
     messageData.relatedPostId = relatedPostId;
+  }
+  if (relatedTransactionId) {
+    if (!mongoose.Types.ObjectId.isValid(relatedTransactionId)) {
+      throw new ChatServiceError('relatedTransactionId không hợp lệ', 400);
+    }
+    messageData.relatedTransactionId = relatedTransactionId;
   }
 
   const message = await Message.create(messageData);
@@ -184,9 +236,16 @@ export async function sendMessage(
   conversation.lastMessageAt = message.createdAt;
   await conversation.save();
 
-  // Populate relatedPostId nếu có
+  // Populate relatedPostId / relatedTransactionId nếu có
   if (relatedPostId) {
-    await message.populate('relatedPostId', 'title images');
+    await message.populate('relatedPostId', 'title images price type');
+  }
+  if (relatedTransactionId) {
+    await message.populate({
+      path: 'relatedTransactionId',
+      select: 'type status totalAmount quantity postId',
+      populate: { path: 'postId', select: 'title images' },
+    });
   }
 
   // Push notification khi người nhận offline
@@ -209,6 +268,16 @@ export async function sendMessage(
         lang === 'en'
           ? `${senderName} shared a location`
           : `${senderName} đã chia sẻ vị trí`;
+    } else if (messageType === 'POST') {
+      body =
+        lang === 'en'
+          ? `${senderName} shared a post`
+          : `${senderName} đã chia sẻ một bài đăng`;
+    } else if (messageType === 'TRANSACTION') {
+      body =
+        lang === 'en'
+          ? `${senderName} shared a transaction`
+          : `${senderName} đã chia sẻ một giao dịch`;
     } else {
       const truncated =
         content.length > 60 ? `${content.slice(0, 60)}…` : content;
@@ -227,7 +296,7 @@ export async function sendMessage(
     ).catch(() => {});
   }
 
-  return message;
+  return serializeMessage(message);
 }
 
 interface PaginatedConversations {
@@ -275,7 +344,7 @@ export async function getMyConversations(
 }
 
 interface PaginatedMessages {
-  data: IMessage[];
+  data: SerializedMessage[];
   pagination: {
     page: number;
     limit: number;
@@ -323,7 +392,12 @@ export async function getMessagesInConversation(
 
   const [messages, total] = await Promise.all([
     Message.find(baseFilter)
-      .populate('relatedPostId', 'title images')
+      .populate('relatedPostId', 'title images price type')
+      .populate({
+        path: 'relatedTransactionId',
+        select: 'type status totalAmount quantity postId',
+        populate: { path: 'postId', select: 'title images' },
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -332,7 +406,9 @@ export async function getMessagesInConversation(
   ]);
 
   return {
-    data: messages as IMessage[],
+    data: messages.map((m) =>
+      serializeMessage(m as unknown as Record<string, unknown>)
+    ),
     pagination: {
       page,
       limit,
@@ -556,7 +632,7 @@ export async function adminGetConversations(
  */
 export async function adminGetMessagesDetail(
   conversationId: string
-): Promise<IMessage[]> {
+): Promise<SerializedMessage[]> {
   if (!mongoose.Types.ObjectId.isValid(conversationId)) {
     throw new ChatServiceError('conversationId không hợp lệ', 400);
   }
@@ -568,11 +644,18 @@ export async function adminGetMessagesDetail(
 
   const messages = await Message.find({ conversationId })
     .populate('senderId', 'fullName avatar')
-    .populate('relatedPostId', 'title images')
+    .populate('relatedPostId', 'title images price type')
+    .populate({
+      path: 'relatedTransactionId',
+      select: 'type status totalAmount quantity postId',
+      populate: { path: 'postId', select: 'title images' },
+    })
     .sort({ createdAt: 1 })
     .lean();
 
-  return messages as IMessage[];
+  return messages.map((m) =>
+    serializeMessage(m as unknown as Record<string, unknown>)
+  );
 }
 
 /**
