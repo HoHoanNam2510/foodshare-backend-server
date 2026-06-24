@@ -69,8 +69,8 @@ const SystemConfigSchema = new Schema<ISystemConfig>(
         default: 6,
       },
       trustScoreThresholds: {
-        reject: { type: Number, default: 50 },
-        approve: { type: Number, default: 70 },
+        reject: { type: Number, default: 70 },
+        approve: { type: Number, default: 90 },
       },
       lastRunAt: { type: Date },
       lastRunStats: {

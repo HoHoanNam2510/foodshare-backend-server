@@ -17,8 +17,8 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
 
-const DEFAULT_REJECT_THRESHOLD = 50;
-const DEFAULT_APPROVE_THRESHOLD = 70;
+const DEFAULT_REJECT_THRESHOLD = 70;
+const DEFAULT_APPROVE_THRESHOLD = 90;
 
 const RADAR_RADIUS_METERS = 5000;
 
@@ -70,18 +70,17 @@ async function sendRadarNotificationsForPost(post: IPost): Promise<void> {
 
 // --- AI Moderation ---
 
-// Groq: OpenAI-compatible inference platform (api.groq.com). Key format: gsk_...
-const groqClient = process.env.GROQ_API_KEY
-  ? new OpenAI({
-      apiKey: process.env.GROQ_API_KEY,
-      baseURL: 'https://api.groq.com/openai/v1',
-    })
+// OpenAI gpt-4o-mini: vision-capable, pay-per-use. Key format: sk-...
+const openaiClient = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-if (!groqClient) {
-  logger.warn('[AI Moderation] GROQ_API_KEY not set — AI moderation disabled');
+if (!openaiClient) {
+  logger.warn(
+    '[AI Moderation] OPENAI_API_KEY not set — AI moderation disabled'
+  );
 } else {
-  logger.info('[AI Moderation] Groq client initialized');
+  logger.info('[AI Moderation] OpenAI client initialized (gpt-4o-mini)');
 }
 
 type ModerationResult = {
@@ -94,53 +93,62 @@ async function moderatePostWithAI(data: {
   description?: string;
   images: string[];
 }): Promise<ModerationResult> {
-  if (!groqClient) {
-    return { trustScore: 60, reason: 'Grok API key chưa được cấu hình' };
+  if (!openaiClient) {
+    return { trustScore: 60, reason: 'OpenAI API key chưa được cấu hình' };
   }
 
   const imageUrls = data.images.slice(0, 3);
 
-  const prompt = `Bạn là chuyên gia kiểm duyệt nội dung cho ứng dụng chia sẻ thực phẩm FoodShare.
-Đánh giá bài đăng và trả về điểm tín nhiệm từ 0–100.
+  const systemPrompt = `Bạn là hệ thống kiểm duyệt nội dung tự động cho ứng dụng chia sẻ thực phẩm FoodShare (Việt Nam).
+Nhiệm vụ: Chấm điểm tín nhiệm 0–100 cho bài đăng thực phẩm dựa trên tiêu đề, mô tả và ảnh đính kèm.
+Ngưỡng quyết định: ≥ 90 → duyệt tự động | 70–89 → chờ admin xem lại | < 70 → từ chối.
+Hãy chấm chặt và nhất quán — chỉ bài đăng rõ ràng, ảnh thật, nội dung nhất quán mới đạt ≥ 90.`;
 
-=== TIÊU CHÍ BẮT BUỘC (vi phạm → trừ 30–50 điểm) ===
-1. Phải là thực phẩm: không phải đồ vật/người/quảng cáo phi thực phẩm
-2. Thống nhất nội dung: tiêu đề + mô tả + ảnh phải cùng 1 sản phẩm
-3. Ngôn ngữ phù hợp: không tục tĩu, lăng mạ, kích động
-4. Không lừa đảo: không quảng cáo sai sự thật
-5. An toàn cơ bản: không có dấu hiệu thực phẩm hỏng/mốc rõ ràng
+  const userPrompt = `Chấm điểm bài đăng dưới đây. Bắt đầu từ 100 điểm, trừ theo từng tiêu chí vi phạm:
 
-=== TIÊU CHÍ CHẤT LƯỢNG (trừ 5–20 điểm mỗi lỗi) ===
-6. Ảnh khớp với tiêu đề món ăn
-7. Mô tả không lạc đề sang sản phẩm khác
-8. Ảnh trông thực tế (không phải stock photo hoàn hảo bất thường)
-9. Tiêu đề đủ rõ ràng để hiểu đây là món gì
-10. Thức ăn trong ảnh sạch sẽ, bảo quản đúng cách
+=== VI PHẠM NGHIÊM TRỌNG (trừ 30–50 điểm mỗi lỗi) ===
+• Không phải thực phẩm (đồ vật, người, quảng cáo dịch vụ, cảnh vật) → trừ 50
+• Ảnh và tiêu đề/mô tả không khớp nhau (VD: ảnh cơm nhưng tiêu đề "trà sữa") → trừ 40
+• Nội dung phản cảm: tục tĩu, lăng mạ, kích động bạo lực, 18+ → trừ 40
+• Dấu hiệu lừa đảo hoặc quảng cáo sai sự thật → trừ 35
+• Thực phẩm rõ ràng đã hỏng, ôi thiu hoặc mốc (nhìn thấy qua ảnh) → trừ 30
 
-Bài đăng:
+=== LỖI CHẤT LƯỢNG (trừ 5–15 điểm mỗi lỗi) ===
+• Ảnh mờ, tối, không nhìn rõ được thức ăn → trừ 15
+• Tiêu đề quá chung chung hoặc thiếu thông tin (VD: chỉ ghi "đồ ăn", "food") → trừ 10
+• Mô tả lạc đề hoặc chứa nội dung không liên quan thực phẩm → trừ 10
+• Thức ăn bày trên nền bẩn hoặc bảo quản không đúng cách → trừ 10
+• Ảnh rõ là ảnh stock/quảng cáo thương mại, không phải ảnh thật của người đăng → trừ 5
+
+Bài đăng cần đánh giá:
 - Tiêu đề: "${data.title}"
 - Mô tả: "${data.description || '(không có mô tả)'}"
-- Số ảnh: ${data.images.length}${imageUrls.length > 0 ? ` (đã đính kèm ${imageUrls.length} ảnh)` : ''}
+- Số ảnh: ${data.images.length}${imageUrls.length > 0 ? ` (${imageUrls.length} ảnh đính kèm bên dưới)` : ' (không có ảnh — trừ 20 điểm)'}
+${imageUrls.length > 1 ? `- Lưu ý khi có nhiều ảnh: (1) Tất cả ảnh phải cùng thể hiện MỘT món ăn — nếu các ảnh hiển thị các món khác nhau hoặc không liên quan nhau thì trừ 30 điểm. (2) Áp dụng tiêu chí nghiêm khắc nhất: nếu BẤT KỲ ảnh nào vi phạm thì tính điểm trừ cho toàn bộ bài. (3) Nhiều góc chụp của cùng 1 món là bình thường, không bị trừ điểm.` : ''}
 
-Trả về JSON (CHỈ JSON, không thêm text):
-{"trustScore": <0-100>, "reason": "<lý_do_ngắn_gọn_1_câu>"}`;
+Trả về JSON hợp lệ, CHỈ JSON, không thêm text:
+{"trustScore": <số_nguyên_0-100>, "reason": "<1_câu_tiếng_Việt_giải_thích_điểm_số>"}`;
 
   try {
     const contentParts: OpenAI.ChatCompletionContentPart[] = [
-      { type: 'text', text: prompt },
+      { type: 'text', text: userPrompt },
       ...imageUrls.map(
         (url): OpenAI.ChatCompletionContentPartImage => ({
           type: 'image_url',
-          image_url: { url },
+          image_url: { url, detail: 'low' },
         })
       ),
     ];
 
-    const response = await groqClient.chat.completions.create({
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-      messages: [{ role: 'user', content: contentParts }],
-      max_tokens: 300,
-      temperature: 0.1,
+    const response = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: contentParts },
+      ],
+      max_tokens: 150,
+      temperature: 0,
+      response_format: { type: 'json_object' },
     });
 
     const raw = (response.choices[0].message.content || '').trim();
@@ -152,7 +160,7 @@ Trả về JSON (CHỈ JSON, không thêm text):
     );
     return { trustScore, reason: parsed.reason || 'Không có lý do cụ thể' };
   } catch (error) {
-    logger.error('[AI Moderation] Groq API error:', error);
+    logger.error('[AI Moderation] OpenAI API error:', error);
     return { trustScore: 60, reason: 'Lỗi khi gọi AI kiểm duyệt' };
   }
 }

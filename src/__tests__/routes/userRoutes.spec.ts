@@ -15,6 +15,9 @@ jest.mock('@/controllers/userController', () => ({
   getUserById: jest.fn((req, res) =>
     res.status(200).json({ success: true, data: { id: req.params.id } })
   ),
+  getPublicUserProfile: jest.fn((req, res) =>
+    res.status(200).json({ success: true, data: { id: req.params.id } })
+  ),
   updateUser: jest.fn((req, res) =>
     res.status(200).json({ success: true, data: { id: req.params.id } })
   ),

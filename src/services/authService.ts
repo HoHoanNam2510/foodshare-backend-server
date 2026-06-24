@@ -215,6 +215,14 @@ export async function loginWithPassword(params: {
     throw new AuthServiceError('Tài khoản không tồn tại', 404);
   }
 
+  if (user.isDeleted) {
+    throw new AuthServiceError(
+      'Tài khoản đã bị xóa. Vui lòng liên hệ admin trong vòng 30 ngày để khôi phục.',
+      403,
+      'ACCOUNT_DELETED'
+    );
+  }
+
   if (user.status === 'BANNED') {
     throw new AuthServiceError('Tài khoản của bạn đã bị khóa', 403);
   }
@@ -269,6 +277,14 @@ export async function loginWithGoogle(idToken: string): Promise<{
       role: 'USER',
     });
   } else {
+    if (user.isDeleted) {
+      throw new AuthServiceError(
+        'Tài khoản đã bị xóa. Vui lòng liên hệ admin trong vòng 30 ngày để khôi phục.',
+        403,
+        'ACCOUNT_DELETED'
+      );
+    }
+
     if (user.status === 'BANNED') {
       throw new AuthServiceError('Tài khoản của bạn đã bị khóa', 403);
     }
