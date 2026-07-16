@@ -1,0 +1,419 @@
+{
+  "results": [
+    {
+      "tc": "TC-USR-AUTH-03-01",
+      "name": "Login email/mật khẩu đúng (USER)",
+      "expected": "HTTP 200 + JWT token",
+      "actual": "HTTP 200 | Đăng nhập thành công",
+      "pass": "PASS",
+      "ms": 790
+    },
+    {
+      "tc": "TC-USR-AUTH-03-02",
+      "name": "Login sai mật khẩu",
+      "expected": "HTTP 401 + báo lỗi",
+      "actual": "HTTP 401 | Mật khẩu không chính xác",
+      "pass": "PASS",
+      "ms": 168
+    },
+    {
+      "tc": "TC-USR-AUTH-03-03",
+      "name": "Login email không tồn tại",
+      "expected": "HTTP 401/404",
+      "actual": "HTTP 404 | Tài khoản không tồn tại",
+      "pass": "PASS",
+      "ms": 55
+    },
+    {
+      "tc": "TC-USR-AUTH-01-01",
+      "name": "Đăng ký — email sai định dạng",
+      "expected": "HTTP 400 validation",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 4
+    },
+    {
+      "tc": "TC-USR-AUTH-01-02",
+      "name": "Đăng ký — mật khẩu < 6 ký tự",
+      "expected": "HTTP 400 validation",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 4
+    },
+    {
+      "tc": "TC-USR-AUTH-01-03",
+      "name": "Đăng ký — email đã tồn tại",
+      "expected": "HTTP 4xx từ chối",
+      "actual": "HTTP 409 | Email này đã được đăng ký. Vui lòng đăng nhập.",
+      "pass": "PASS",
+      "ms": 58
+    },
+    {
+      "tc": "TC-USR-AUTH-02-01",
+      "name": "Xác minh OTP — sai định dạng (3 số)",
+      "expected": "HTTP 400 (regex 6 số)",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 8
+    },
+    {
+      "tc": "TC-USR-AUTH-02-02",
+      "name": "Xác minh OTP — mã sai/hết hạn (6 số)",
+      "expected": "HTTP 400 mã không đúng",
+      "actual": "HTTP 400 | Mã xác minh không hợp lệ hoặc đã hết hạn",
+      "pass": "PASS",
+      "ms": 88
+    },
+    {
+      "tc": "TC-USR-AUTH-06-01",
+      "name": "GET /auth/me có token",
+      "expected": "HTTP 200 thông tin user",
+      "actual": "HTTP 200 | Lấy thông tin người dùng thành công",
+      "pass": "PASS",
+      "ms": 61
+    },
+    {
+      "tc": "TC-USR-AUTH-06-02",
+      "name": "GET /auth/me không token",
+      "expected": "HTTP 401",
+      "actual": "HTTP 401 | Không tìm thấy Token xác thực",
+      "pass": "PASS",
+      "ms": 3
+    },
+    {
+      "tc": "TC-USR-AUTH-08-01",
+      "name": "Cập nhật GPS ngoài phạm vi HCM",
+      "expected": "HTTP 400 validation",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 5
+    },
+    {
+      "tc": "TC-USR-AUTH-08-02",
+      "name": "Cập nhật GPS hợp lệ (HCM)",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | Cập nhật vị trí thành công",
+      "pass": "PASS",
+      "ms": 74
+    },
+    {
+      "tc": "TC-USR-POST-02-01",
+      "name": "Tạo bài P2P với passcode hợp lệ",
+      "expected": "HTTP 201 status=PENDING_REVIEW",
+      "actual": "HTTP 201 | Tạo bài đăng thành công",
+      "pass": "PASS",
+      "ms": 271
+    },
+    {
+      "tc": "TC-USR-POST-02-02",
+      "name": "Tạo bài — passcode sai",
+      "expected": "HTTP 400",
+      "actual": "HTTP 400 | Passcode không hợp lệ hoặc đã hết hạn",
+      "pass": "PASS",
+      "ms": 59
+    },
+    {
+      "tc": "TC-USR-POST-02-03",
+      "name": "Tạo bài — thiếu ảnh (bắt buộc ≥1)",
+      "expected": "HTTP 400 validation",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 4
+    },
+    {
+      "tc": "TC-USR-POST-03-01",
+      "name": "Xem bài đăng của mình",
+      "expected": "HTTP 200 danh sách",
+      "actual": "HTTP 200 | Lấy danh sách bài đăng thành công",
+      "pass": "PASS",
+      "ms": 58
+    },
+    {
+      "tc": "TC-USR-POST-01-01",
+      "name": "Gửi passcode tạo bài (email đã verify)",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | Đã gửi passcode xác thực tạo bài đăng qua email",
+      "pass": "PASS",
+      "ms": 239
+    },
+    {
+      "tc": "TC-USR-EXP-01-01",
+      "name": "Xem chi tiết bài đăng AVAILABLE",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | Lấy chi tiết bài đăng thành công",
+      "pass": "PASS",
+      "ms": 137
+    },
+    {
+      "tc": "TC-USR-EXP-01-02",
+      "name": "Xem bài PENDING_REVIEW của người khác",
+      "expected": "HTTP 404 (ẩn với non-owner)",
+      "actual": "HTTP 404 | Không tìm thấy bài đăng",
+      "pass": "PASS",
+      "ms": 111
+    },
+    {
+      "tc": "TC-USR-EXP-02-01",
+      "name": "Tìm bài trên bản đồ (≤5km)",
+      "expected": "HTTP 200 danh sách",
+      "actual": "HTTP 200 | Lấy bài đăng xung quanh thành công",
+      "pass": "PASS",
+      "ms": 132
+    },
+    {
+      "tc": "TC-USR-EXP-03-01",
+      "name": "Xem danh sách Explore",
+      "expected": "HTTP 200 danh sách",
+      "actual": "HTTP 200 | Lấy danh sách bài đăng thành công",
+      "pass": "PASS",
+      "ms": 110
+    },
+    {
+      "tc": "TC-USR-TXN-01-01",
+      "name": "Gửi yêu cầu xin nhận bài P2P",
+      "expected": "HTTP 201 status=PENDING",
+      "actual": "HTTP 201 | Tạo yêu cầu xin đồ thành công",
+      "pass": "PASS",
+      "ms": 186
+    },
+    {
+      "tc": "TC-USR-TXN-01-02",
+      "name": "Xin nhận bài của chính mình",
+      "expected": "HTTP 400 từ chối",
+      "actual": "HTTP 400 | Bạn không thể tự xin đồ của chính mình",
+      "pass": "PASS",
+      "ms": 80
+    },
+    {
+      "tc": "TC-USR-TXN-01-03",
+      "name": "Gửi yêu cầu trùng (đã có PENDING)",
+      "expected": "HTTP 400 từ chối",
+      "actual": "HTTP 400 | Bạn đã có yêu cầu đang chờ hoặc đã được chấp nhận cho bài đăng này. Vui lòng đợi kết quả hoặc hủy yêu cầu cũ trước khi gửi lại.",
+      "pass": "PASS",
+      "ms": 109
+    },
+    {
+      "tc": "TC-USR-TXN-01-04",
+      "name": "Yêu cầu số lượng không hợp lệ (0)",
+      "expected": "HTTP 400 validation",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 4
+    },
+    {
+      "tc": "TC-USR-TXN-06-01",
+      "name": "Chủ bài chấp nhận yêu cầu → sinh QR",
+      "expected": "HTTP 200 + verificationCode",
+      "actual": "HTTP 200 | Đã chấp nhận yêu cầu xin đồ",
+      "pass": "PASS",
+      "ms": 386
+    },
+    {
+      "tc": "TC-USR-TXN-07-01",
+      "name": "Quét QR sai → không hoàn tất",
+      "expected": "HTTP 404 không tìm thấy",
+      "actual": "HTTP 404 | Mã QR không hợp lệ hoặc đơn hàng không ở trạng thái chờ giao nhận",
+      "pass": "PASS",
+      "ms": 60
+    },
+    {
+      "tc": "TC-USR-TXN-B2C-01",
+      "name": "Đặt mua Túi Mù B2C",
+      "expected": "HTTP 201 status=PENDING",
+      "actual": "HTTP 201 | Đặt hàng thành công. Chờ cửa hàng xác nhận.",
+      "pass": "PASS",
+      "ms": 117
+    },
+    {
+      "tc": "TC-STR-TXN-02-01",
+      "name": "Cửa hàng chấp nhận đơn → sinh mã CK",
+      "expected": "HTTP 200 + bankSnapshot/FS code",
+      "actual": "HTTP 200 | Đã chấp nhận đơn hàng",
+      "pass": "PASS",
+      "ms": 365
+    },
+    {
+      "tc": "TC-STR-TXN-04-01",
+      "name": "Cửa hàng xác nhận đã nhận tiền → COMPLETED",
+      "expected": "HTTP 200 status=COMPLETED",
+      "actual": "HTTP 200 | Đã xác nhận nhận tiền thành công",
+      "pass": "PASS",
+      "ms": 1803
+    },
+    {
+      "tc": "TC-USR-RPT-01-01",
+      "name": "Gửi báo cáo hợp lệ (bài đăng)",
+      "expected": "HTTP 201",
+      "actual": "HTTP 201 | Gửi báo cáo vi phạm thành công",
+      "pass": "PASS",
+      "ms": 187
+    },
+    {
+      "tc": "TC-USR-RPT-01-02",
+      "name": "Báo cáo — mô tả < 10 ký tự",
+      "expected": "HTTP 400 validation",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 5
+    },
+    {
+      "tc": "TC-USR-RPT-01-03",
+      "name": "Báo cáo — targetType sai",
+      "expected": "HTTP 400 validation",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 5
+    },
+    {
+      "tc": "TC-USR-REV-02-01",
+      "name": "Viết đánh giá rating ngoài 1-5 (6)",
+      "expected": "HTTP 400 validation",
+      "actual": "HTTP 400 | Dữ liệu đầu vào không hợp lệ",
+      "pass": "PASS",
+      "ms": 4
+    },
+    {
+      "tc": "TC-USR-REV-02-02",
+      "name": "Viết đánh giá GD hoàn tất (rating 5)",
+      "expected": "HTTP 201/200",
+      "actual": "HTTP 201 | Đánh giá giao dịch thành công",
+      "pass": "PASS",
+      "ms": 846
+    },
+    {
+      "tc": "TC-STR-VCH-01-01",
+      "name": "Cửa hàng tạo voucher",
+      "expected": "HTTP 201",
+      "actual": "HTTP 404 | (no json)",
+      "pass": "FAIL",
+      "ms": 6
+    },
+    {
+      "tc": "TC-USR-VCH-01-01",
+      "name": "Xem chợ voucher",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | {\"success\":true,\"data\":[],\"pagination\":{\"page\":1,\"limit\":20,\"total\":0,\"totalPages\":0}}",
+      "pass": "PASS",
+      "ms": 99
+    },
+    {
+      "tc": "TC-USR-VCH-02-01",
+      "name": "Xem voucher trong ví",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | {\"success\":true,\"data\":[]}",
+      "pass": "PASS",
+      "ms": 58
+    },
+    {
+      "tc": "TC-ADM-CFG-01-01",
+      "name": "Admin xem cấu hình hệ thống",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | {\"success\":true,\"data\":{\"_id\":\"69da2786293395824e2b228d\",\"__v\":0,\"createdAt\":\"2026-04-11T1",
+      "pass": "PASS",
+      "ms": 56
+    },
+    {
+      "tc": "TC-ADM-CFG-01-02",
+      "name": "USER thường gọi /config (phân quyền)",
+      "expected": "HTTP 403 từ chối",
+      "actual": "HTTP 403 | Bạn không có quyền truy cập tài nguyên này",
+      "pass": "PASS",
+      "ms": 4
+    },
+    {
+      "tc": "TC-ADM-USR-02-01",
+      "name": "Admin xem danh sách người dùng",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | Lấy danh sách người dùng thành công",
+      "pass": "PASS",
+      "ms": 93
+    },
+    {
+      "tc": "TC-USR-NOTIF-01-01",
+      "name": "Xem danh sách thông báo",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | {\"success\":true,\"data\":[{\"_id\":\"6a561e0e58c8e215d8044c0a\",\"userId\":\"6a561e0c5a82ba1ea4d5c3",
+      "pass": "PASS",
+      "ms": 59
+    },
+    {
+      "tc": "TC-USR-NOTIF-02-01",
+      "name": "Đếm thông báo chưa đọc",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | {\"success\":true,\"data\":{\"count\":7}}",
+      "pass": "PASS",
+      "ms": 55
+    },
+    {
+      "tc": "TC-USR-PNT-02-01",
+      "name": "Xem bảng xếp hạng điểm xanh",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | {\"success\":true,\"data\":{\"period\":\"weekly\",\"startDate\":\"2026-07-12T17:00:00.000Z\",\"endDate\"",
+      "pass": "PASS",
+      "ms": 128
+    },
+    {
+      "tc": "TC-USR-PNT-01-01",
+      "name": "Xem lịch sử điểm xanh",
+      "expected": "HTTP 200",
+      "actual": "HTTP 200 | {\"success\":true,\"data\":{\"greenPoints\":5122,\"logs\":[{\"_id\":\"6a561e0e58c8e215d8044c28\",\"user",
+      "pass": "PASS",
+      "ms": 128
+    }
+  ],
+  "nfr": [
+    {
+      "label": "POST /auth/login",
+      "avg": 94,
+      "min": 2,
+      "max": 195
+    },
+    {
+      "label": "GET /auth/me",
+      "avg": 60,
+      "min": 56,
+      "max": 72
+    },
+    {
+      "label": "GET /posts/map",
+      "avg": 121,
+      "min": 109,
+      "max": 146
+    },
+    {
+      "label": "GET /posts/explore",
+      "avg": 122,
+      "min": 104,
+      "max": 158
+    },
+    {
+      "label": "GET /notifications",
+      "avg": 58,
+      "min": 54,
+      "max": 68
+    },
+    {
+      "label": "GET /greenpoints/leaderboard",
+      "avg": 107,
+      "min": 101,
+      "max": 129
+    },
+    {
+      "label": "GET /vouchers/market",
+      "avg": 57,
+      "min": 50,
+      "max": 75
+    }
+  ],
+  "ids": {
+    "user": "6a561e0c5a82ba1ea4d5c3bc",
+    "store": "6a561e0c5a82ba1ea4d5c3bd",
+    "admin": "6a561e0c5a82ba1ea4d5c3be",
+    "p2pPost": "6a561e08996465e522e3f66c",
+    "b2cPost": "6a561e08996465e522e3f66d",
+    "userPost": "6a561e0a58c8e215d8044b9d",
+    "p2pReq": "6a561e0b58c8e215d8044bc5",
+    "p2pQr": "6a561e0b58c8e215d8044bc5-6a561e0c5a82ba1ea4d5c3bc-c4f0753d",
+    "b2cOrder": "6a561e0c58c8e215d8044bd3"
+  }
+}

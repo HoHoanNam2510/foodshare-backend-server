@@ -1,0 +1,61 @@
+{
+  "out": [
+    {
+      "tc": "TC-STR-AUTH-10-01",
+      "name": "Đăng ký KYC cửa hàng (nộp hồ sơ)",
+      "expected": "HTTP 200/201, status=PENDING_KYC",
+      "actual": "HTTP 200 | Đã gửi đơn đăng ký cửa hàng thành công. Vui lòng chờ Admin xét duyệt.",
+      "pass": true
+    },
+    {
+      "tc": "TC-ADM-USR-05-01",
+      "name": "Admin duyệt KYC → nâng cấp STORE",
+      "expected": "HTTP 200, role=STORE, kycStatus=VERIFIED",
+      "actual": "HTTP 200 | role=STORE, kycStatus=VERIFIED, status=ACTIVE",
+      "pass": true
+    },
+    {
+      "tc": "TC-USR-UPL-01-01",
+      "name": "Upload ảnh lên Cloudinary",
+      "expected": "HTTP 200/201, trả URL Cloudinary",
+      "actual": "HTTP 200 | https://res.cloudinary.com/deq2j8mzs/image/upload/v178403443",
+      "pass": true
+    },
+    {
+      "tc": "TC-USR-CHAT-02-01",
+      "name": "Tạo / mở phòng chat 1-1",
+      "expected": "HTTP 200/201, trả conversationId",
+      "actual": "HTTP 201 | convId=6a56348161f538cd81d28fc8",
+      "pass": true
+    },
+    {
+      "tc": "TC-USR-CHAT-03-01",
+      "name": "Gửi tin nhắn (lưu DB qua REST)",
+      "expected": "HTTP 200/201, tin nhắn được lưu",
+      "actual": "HTTP 201 | msgId=6a56348161f538cd81d28fcd",
+      "pass": true
+    },
+    {
+      "tc": "TC-USR-CHAT-03-02",
+      "name": "Nhận tin nhắn realtime (Socket.io)",
+      "expected": "Client B nhận sự kiện new-message",
+      "actual": "Nhận được new-message qua socket",
+      "pass": true
+    },
+    {
+      "tc": "TC-USR-CHAT-08-01",
+      "name": "Thu hồi tin nhắn (REST + realtime)",
+      "expected": "HTTP 200 + client B nhận message:recalled",
+      "actual": "HTTP 200 | Tin nhắn đã được thu hồi | realtime=nhận message:recalled",
+      "pass": true
+    },
+    {
+      "tc": "TC-USR-AUTH-04-02",
+      "name": "Đăng nhập Google — idToken không hợp lệ (negative)",
+      "expected": "HTTP 4xx từ chối",
+      "actual": "HTTP 400 | Đăng nhập Google thất bại",
+      "pass": true
+    }
+  ],
+  "upUrl": "https://res.cloudinary.com/deq2j8mzs/image/upload/v1784034436/foodshare/posts/i9vjwkmdptr4oz7zap5c.png"
+}
